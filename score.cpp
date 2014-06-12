@@ -56,7 +56,7 @@ void fetch(fetch_decode_t &out_buf, exec_fetch_t &in, const char *hex_file) {
     ELSE(pc + LitW(4));
 
   _(out, "inst") =
-    LLRom<IROM_SZ, N>(Zext<IROM_SZ>(pc[range<2,N-1>()]), hex_file);
+    LLRom<IROM_SZ, N>(Zext<IROM_SZ>(pc[range<CLOG2(N/8),N-1>()]), hex_file);
   _(out, "next_pc") = next_pc;
   _(out, "pc") = pc;
   _(out, "valid") = Lit(1);
@@ -201,8 +201,15 @@ void reg(reg_exec_t &out_buf, decode_reg_t &in, mem_reg_t &in_wb) {
     regs[i] = Wreg(wr[i], _(in_wb, "result"));
   TAP(regs);
 
-  _(out, "val0") = Mux(_(in, "rsrc0_idx"), regs);
-  _(out, "val1") = Mux(_(in, "rsrc1_idx"), regs);
+  Cassign(_(out, "val0")).
+    IF(_(in, "rsrc0_idx") == _(in_wb, "rdest_idx") && _(in_wb, "rdest_valid"),
+      _(in_wb, "result")).
+    ELSE(Mux(_(in, "rsrc0_idx"), regs));
+
+  Cassign(_(out, "val1")).
+    IF(_(in, "rsrc1_idx") == _(in_wb, "rdest_idx") && _(in_wb, "rdest_valid"),
+      _(in_wb, "result")).
+    ELSE(Mux(_(in, "rsrc1_idx"), regs));
 
   _(out, "pc") = _(in, "pc");
   _(out, "next_pc") = _(in, "next_pc");
@@ -219,6 +226,7 @@ void reg(reg_exec_t &out_buf, decode_reg_t &in, mem_reg_t &in_wb) {
   _(out, "valid") = _(in, "valid");
   _(out, "jal") = _(in, "jal");
   _(out, "mem_byte") = _(in, "mem_byte");
+  _(out, "imm") = _(in, "imm");
 
   out_buf = Reg(Flatten(out));
 }
@@ -227,9 +235,27 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in) {
   exec_mem_t out;
 
   word_t actual_next_pc, pc(_(in, "pc")), next_pc(_(in, "next_pc")),
-         val0(_(in, "val0")), val1(_(in, "val1")), imm(_(in, "imm")),
+         val0, val1, imm(_(in, "imm")),
          bdest(pc + imm * LitW(N/8)),
          jdest(Cat(pc[range<N-4, N-1>()], Zext<N-4>(imm * LitW(N/8))));
+
+  Cassign(val0).
+    IF(_(in, "rsrc0_valid") && Reg(_(in, "rdest_valid")) &&
+         _(in, "rsrc0_idx") == Reg(_(in, "rdest_idx")),
+           Reg(_(out, "result"))).
+    IF(_(in, "rsrc0_valid") && Reg(Reg(_(in, "rdest_valid"))) &&
+         _(in, "rsrc0_idx") == Reg(Reg(_(in, "rdest_idx"))),
+           Reg(Reg(_(out, "result")))).
+    ELSE(_(in, "val0"));
+
+  Cassign(val1).
+    IF(_(in, "rsrc1_valid") && Reg(_(in, "rdest_valid")) &&
+         _(in, "rsrc1_idx") == Reg(_(in, "rdest_idx")),
+           Reg(_(out, "result"))).
+    IF(_(in, "rsrc1_valid") && Reg(Reg(_(in, "rdest_valid"))) &&
+         _(in, "rsrc1_idx") == Reg(Reg(_(in, "rdest_idx"))),
+           Reg(Reg(_(out, "result")))).
+    ELSE(_(in, "val1"));
 
   opcode_t op(_(in, "op"));
   func_t func(_(in, "func"));
