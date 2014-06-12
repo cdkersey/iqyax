@@ -10,8 +10,8 @@ using namespace s_core;
 void fetch(fetch_decode_t &out, exec_fetch_t &in, const char *hex_file);
 void decode(decode_reg_t &out, fetch_decode_t &in);
 void reg(reg_exec_t &out, decode_reg_t &in, mem_reg_t &in_wb);
-void exec(exec_mem_t &out, exec_fetch_t &out_pc, reg_exec_t &in);
-void mem(mem_reg_t &out, exec_mem_t &in);
+void exec(exec_mem_t &out, exec_fetch_t &out_pc, reg_exec_t &in, word_t &fwd);
+void mem(mem_reg_t &out, word_t &fwd, exec_mem_t &in);
 
 void simple_core(const char *hex_file) {
   fetch_decode_t fetch_decode;
@@ -20,19 +20,21 @@ void simple_core(const char *hex_file) {
   exec_mem_t exec_mem;
   exec_fetch_t exec_fetch;
   mem_reg_t mem_reg;
+  word_t mem_exec;
 
-                                             // Pipeline:
-  fetch(fetch_decode, exec_fetch, hex_file); //   STAGE 1
-  decode(decode_reg, fetch_decode);          //   STAGE 2
-  reg(reg_exec, decode_reg, mem_reg);        //     STAGE 5 (mem_reg)
-  exec(exec_mem, exec_fetch, reg_exec);      //   STAGE 3
-  mem(mem_reg, exec_mem);                    //   STAGE 4
+                                                  // Pipeline:
+  fetch(fetch_decode, exec_fetch, hex_file);      //   STAGE 1
+  decode(decode_reg, fetch_decode);               //   STAGE 2
+  reg(reg_exec, decode_reg, mem_reg);             //     STAGE 5 (mem_reg)
+  exec(exec_mem, exec_fetch, reg_exec, mem_exec); //   STAGE 3
+  mem(mem_reg, mem_exec, exec_mem);               //   STAGE 4
 
   TAP(fetch_decode);
   TAP(decode_reg);
   TAP(reg_exec);
   TAP(exec_mem);
   TAP(exec_fetch);
+  TAP(mem_exec);
   TAP(mem_reg);
 }
 
@@ -83,11 +85,20 @@ void decode(decode_reg_t &out, fetch_decode_t &in) {
 
   Cassign(_(out, "imm")).
     IF(j_inst,    Zext<N>(inst[range<0, 25>()])).
-    IF(imm_shift, Zext<N>(inst[range<5, 11>()])).
+    IF(imm_shift, Zext<N>(inst[range<6, 10>()])).
     IF(sext_imm, Sext<N>(inst[range<0, 15>()])).
     ELSE(        Zext<N>(inst[range<0, 15>()]));
 
   j_inst = opcode == Lit<6>(0x02) || opcode == Lit<6>(0x03);
+
+  sext_imm =
+    opcode == Lit<6>(0x04) || // beq
+    opcode == Lit<6>(0x05) || // bne
+    opcode == Lit<6>(0x08) || // addi
+    opcode == Lit<6>(0x09) || // addiu
+    opcode == Lit<6>(0x0c) || // andi
+    opcode == Lit<6>(0x0d) || // ori
+    opcode == Lit<6>(0x0e);   // xori
 
   imm_shift =
     opcode == Lit<6>(0x00) && (
@@ -103,6 +114,7 @@ void decode(decode_reg_t &out, fetch_decode_t &in) {
       opcode == Lit<6>(0x0b) || // sltiu
       opcode == Lit<6>(0x0c) || // andi
       opcode == Lit<6>(0x0d) || // ori
+      opcode == Lit<6>(0x0e) || // xori
       opcode == Lit<6>(0x20) || // lb
       opcode == Lit<6>(0x23) || // lw
       opcode == Lit<6>(0x28) || // sb
@@ -231,31 +243,39 @@ void reg(reg_exec_t &out_buf, decode_reg_t &in, mem_reg_t &in_wb) {
   out_buf = Reg(Flatten(out));
 }
 
-void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in) {
+void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
+          word_t &mem_fwd)
+{
   exec_mem_t out;
 
   word_t actual_next_pc, pc(_(in, "pc")), next_pc(_(in, "next_pc")),
          val0, val1, imm(_(in, "imm")),
-         bdest(pc + imm * LitW(N/8)),
+    bdest(pc + LitW(N/8) + imm * LitW(N/8)),
          jdest(Cat(pc[range<N-4, N-1>()], Zext<N-4>(imm * LitW(N/8))));
 
   Cassign(val0).
     IF(_(in, "rsrc0_valid") && Reg(_(in, "rdest_valid")) &&
-         _(in, "rsrc0_idx") == Reg(_(in, "rdest_idx")),
+         !Reg(_(in, "mem_rd")) && _(in, "rsrc0_idx") == Reg(_(in, "rdest_idx")),
            Reg(_(out, "result"))).
     IF(_(in, "rsrc0_valid") && Reg(Reg(_(in, "rdest_valid"))) &&
-         _(in, "rsrc0_idx") == Reg(Reg(_(in, "rdest_idx"))),
-           Reg(Reg(_(out, "result")))).
+       _(in, "rsrc0_idx") == Reg(Reg(_(in, "rdest_idx")))).
+      IF(Reg(Reg(_(in, "mem_rd"))), mem_fwd).
+      ELSE(Reg(Reg(_(out, "result")))).
+    END().
     ELSE(_(in, "val0"));
 
   Cassign(val1).
     IF(_(in, "rsrc1_valid") && Reg(_(in, "rdest_valid")) &&
-         _(in, "rsrc1_idx") == Reg(_(in, "rdest_idx")),
+         !Reg(_(in, "mem_rd")) && _(in, "rsrc1_idx") == Reg(_(in, "rdest_idx")),
            Reg(_(out, "result"))).
     IF(_(in, "rsrc1_valid") && Reg(Reg(_(in, "rdest_valid"))) &&
-         _(in, "rsrc1_idx") == Reg(Reg(_(in, "rdest_idx"))),
-           Reg(Reg(_(out, "result")))).
+       _(in, "rsrc1_idx") == Reg(Reg(_(in, "rdest_idx")))).
+      IF(Reg(Reg(_(in, "mem_rd"))), mem_fwd).
+      ELSE(Reg(Reg(_(out, "result")))).
+    END().
     ELSE(_(in, "val1"));
+
+  TAP(val0); TAP(val1);
 
   opcode_t op(_(in, "op"));
   func_t func(_(in, "func"));
@@ -294,7 +314,7 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in) {
   TAP(bubble); TAP(bubble_ctr);
 
   // Compute address for memory accesses
-  _(out, "addr") = _(in, "val1") + _(in, "imm");
+  _(out, "addr") = val0 + _(in, "imm");
   _(out, "mem_rd") = _(in, "mem_rd") && in_valid;
   _(out, "mem_wr") = _(in, "mem_wr") && in_valid;
   _(out, "mem_byte") = _(in, "mem_byte");
@@ -304,14 +324,14 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in) {
 
   Cassign(_(out, "result")).
     IF(_(in, "jal"), pc + LitW(N/8)). // jump/branch and link
-    IF(_(in, "mem_wr"), val0). // Store
+    IF(_(in, "mem_wr"), val1). // Store
     IF(op == Lit<6>(0)).
-      IF(func == Lit<6>(0x00), val0 << Zext<CLOG2(N)>(imm)). // sll
-      IF(func == Lit<6>(0x02), val0 >> Zext<CLOG2(N)>(imm)). // srl
+      IF(func == Lit<6>(0x00), val1 << Zext<CLOG2(N)>(imm)). // sll
+      IF(func == Lit<6>(0x02), val1 >> Zext<CLOG2(N)>(imm)). // srl
       IF(func == Lit<6>(0x03),                               // sra
-        Shifter(val0, Zext<CLOG2(N)>(imm), Lit(1), Lit(0), Lit(1))).
-      IF(func == Lit<6>(0x04), val0 << Zext<CLOG2(N)>(val1)). // sllv
-      IF(func == Lit<6>(0x06), val0 >> Zext<CLOG2(N)>(val1)). // srlv       
+        Shifter(val1, Zext<CLOG2(N)>(imm), Lit(1), Lit(0), Lit(1))).
+      IF(func == Lit<6>(0x04), val1 << Zext<CLOG2(N)>(val0)). // sllv
+      IF(func == Lit<6>(0x06), val1 >> Zext<CLOG2(N)>(val0)). // srlv       
       IF(func == Lit<6>(0x20), val0 + val1). // add
       IF(func == Lit<6>(0x21), val0 + val1). // addu
       IF(func == Lit<6>(0x22), val0 - val1). // sub
@@ -331,14 +351,13 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in) {
     IF(op == Lit<6>(0x0c), val0 & imm). // andi
     IF(op == Lit<6>(0x0d), val0 | imm). // ori
     IF(op == Lit<6>(0x0e), val0 ^ imm). // xori
-    IF(op == Lit<6>(0x0f), Cat(Zext<16>(val0), Lit<N-16>(0))). // lui
-    
+    IF(op == Lit<6>(0x0f), Cat(Zext<16>(imm), Lit<N-16>(0))). // lui
     ELSE(LitW(0));
 
   out_buf = Reg(Flatten(out));
 }
 
-void mem(mem_reg_t &out, exec_mem_t &in) {
+void mem(mem_reg_t &out, word_t &fwd, exec_mem_t &in) {
   const unsigned B(N/8), BB(CLOG2(B));
 
   vec<B, bvec<8> > memq, memd;
@@ -366,11 +385,19 @@ void mem(mem_reg_t &out, exec_mem_t &in) {
   _(out, "rdest_idx") = Reg(_(in, "rdest_idx"));
   _(out, "rdest_valid") = Reg(_(in, "rdest_valid"));
 
+  fwd = memq_word;
+
   // The final result: memory (word), memory(byte), or ALU
   Cassign(_(out, "result")).
-    IF(_(in, "mem_rd")).
-      IF(_(in, "mem_byte"), Zext<N>(Mux(Reg(bytesel), memq))).
+    IF(Reg(_(in, "mem_rd"))).
+      IF(Reg(_(in, "mem_byte")), Zext<N>(Mux(Reg(bytesel), memq))).
       ELSE(memq_word).
     END().
     ELSE(Reg(_(in, "result")));
+
+  TAP(wr);
+  TAP(memq_word);
+  TAP(bytesel);
+  TAP(memd);
+  TAP(memq);
 }

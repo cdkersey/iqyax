@@ -1,7 +1,7 @@
 CXXFLAGS = -std=c++11
 LDLIBS = -lchdl
 
-score.vcd : score
+score.vcd : score score.hex
 	./score
 
 score : score.o
