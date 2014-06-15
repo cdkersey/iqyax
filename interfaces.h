@@ -2,7 +2,7 @@
 #include <chdl/chdl.h>
 
 namespace s_core {
-  const unsigned N(32), IROM_SZ(10), RAM_SZ(10);
+  const unsigned N(32), IROM_SZ(10), RAM_SZ(20);
 
   typedef chdl::bvec<5> rname_t;
   typedef chdl::bvec<6> opcode_t;

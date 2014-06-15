@@ -253,11 +253,13 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
     bdest(pc + LitW(N/8) + imm * LitW(N/8)),
          jdest(Cat(pc[range<N-4, N-1>()], Zext<N-4>(imm * LitW(N/8))));
 
+  node in_valid;
+
   Cassign(val0).
-    IF(_(in, "rsrc0_valid") && Reg(_(in, "rdest_valid")) &&
+    IF(_(in, "rsrc0_valid") && Reg(in_valid) &&
          !Reg(_(in, "mem_rd")) && _(in, "rsrc0_idx") == Reg(_(in, "rdest_idx")),
            Reg(_(out, "result"))).
-    IF(_(in, "rsrc0_valid") && Reg(Reg(_(in, "rdest_valid"))) &&
+    IF(_(in, "rsrc0_valid") && Reg(Reg(in_valid)) &&
        _(in, "rsrc0_idx") == Reg(Reg(_(in, "rdest_idx")))).
       IF(Reg(Reg(_(in, "mem_rd"))), mem_fwd).
       ELSE(Reg(Reg(_(out, "result")))).
@@ -265,10 +267,10 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
     ELSE(_(in, "val0"));
 
   Cassign(val1).
-    IF(_(in, "rsrc1_valid") && Reg(_(in, "rdest_valid")) &&
+    IF(_(in, "rsrc1_valid") && Reg(in_valid) &&
          !Reg(_(in, "mem_rd")) && _(in, "rsrc1_idx") == Reg(_(in, "rdest_idx")),
            Reg(_(out, "result"))).
-    IF(_(in, "rsrc1_valid") && Reg(Reg(_(in, "rdest_valid"))) &&
+    IF(_(in, "rsrc1_valid") && Reg(Reg(in_valid)) &&
        _(in, "rsrc1_idx") == Reg(Reg(_(in, "rdest_idx")))).
       IF(Reg(Reg(_(in, "mem_rd"))), mem_fwd).
       ELSE(Reg(Reg(_(out, "result")))).
@@ -300,7 +302,7 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   // invalid.
   bvec<2> next_bubble_ctr, bubble_ctr(Reg(next_bubble_ctr));
   node bubble(OrN(bubble_ctr));
-  node in_valid(_(in, "valid") && !bubble);
+  in_valid = _(in, "valid") && !bubble;
 
   node branch_mispredict(in_valid && next_pc != actual_next_pc);
   _(out_pc, "ldpc") = branch_mispredict;
@@ -368,12 +370,14 @@ void mem(mem_reg_t &out, word_t &fwd, exec_mem_t &in) {
   // Break input into bytes
   for (unsigned i = 0; i < B; ++i)
     for (unsigned j = 0; j < 8; ++j)
-      memd[i][j] = _(in, "result")[i*8 + j];
+      Cassign(memd[i][j]).
+        IF(_(in, "mem_byte"), _(in, "result")[j]).
+        ELSE(_(in, "result")[i*8 + j]);
 
   // Instantiate the SRAMs
   bvec<RAM_SZ> sram_addr(_(in, "addr")[range<BB, BB + RAM_SZ - 1>()]);
   for (unsigned i = 0; i < B; ++i)
-    memq[i] = Syncmem(sram_addr, memd[i], _(in, "mem_wr"));
+    memq[i] = Syncmem(sram_addr, memd[i], wr[i]);
 
   // Combine output bytes into single word
   word_t memq_word;
