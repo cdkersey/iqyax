@@ -389,7 +389,7 @@ void mem(mem_reg_t &out, word_t &fwd, exec_mem_t &in) {
   _(out, "rdest_idx") = Reg(_(in, "rdest_idx"));
   _(out, "rdest_valid") = Reg(_(in, "rdest_valid"));
 
-  fwd = memq_word;
+  fwd = _(out, "result");
 
   // The final result: memory (word), memory(byte), or ALU
   Cassign(_(out, "result")).
