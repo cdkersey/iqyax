@@ -256,21 +256,23 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   node in_valid;
 
   Cassign(val0).
-    IF(_(in, "rsrc0_valid") && Reg(in_valid) &&
+    IF(_(in, "rsrc0_valid") && Reg(in_valid) && Reg(_(in, "rdest_valid")) &&
          !Reg(_(in, "mem_rd")) && _(in, "rsrc0_idx") == Reg(_(in, "rdest_idx")),
            Reg(_(out, "result"))).
-    IF(_(in, "rsrc0_valid") && Reg(Reg(in_valid)) &&
-       _(in, "rsrc0_idx") == Reg(Reg(_(in, "rdest_idx")))).
+    IF(_(in, "rsrc0_valid") && Reg(Reg(in_valid))
+        && Reg(Reg(_(in, "rdest_valid"))) &&
+        _(in, "rsrc0_idx") == Reg(Reg(_(in, "rdest_idx")))).
       IF(Reg(Reg(_(in, "mem_rd"))), mem_fwd).
       ELSE(Reg(Reg(_(out, "result")))).
     END().
     ELSE(_(in, "val0"));
 
   Cassign(val1).
-    IF(_(in, "rsrc1_valid") && Reg(in_valid) &&
+    IF(_(in, "rsrc1_valid") && Reg(in_valid) && Reg(_(in, "rdest_valid")) &&
          !Reg(_(in, "mem_rd")) && _(in, "rsrc1_idx") == Reg(_(in, "rdest_idx")),
            Reg(_(out, "result"))).
     IF(_(in, "rsrc1_valid") && Reg(Reg(in_valid)) &&
+       Reg(Reg(_(in, "rdest_valid"))) &&
        _(in, "rsrc1_idx") == Reg(Reg(_(in, "rdest_idx")))).
       IF(Reg(Reg(_(in, "mem_rd"))), mem_fwd).
       ELSE(Reg(Reg(_(out, "result")))).
@@ -284,7 +286,7 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
 
   Cassign(actual_next_pc).
     IF(op == Lit<6>(0x02) || op == Lit<6>(0x03), jdest). // j, jal
-    IF(op == Lit<6>(0x00) && func == Lit<6>(0x04), val0). // jr
+    IF(op == Lit<6>(0x00) && func == Lit<6>(0x08), val0). // jr
     IF(op == Lit<6>(0x04) && val0 == val1, bdest). // beq
     IF(op == Lit<6>(0x05) && val0 != val1, bdest). // bne
     IF(op == Lit<6>(0x01)).
