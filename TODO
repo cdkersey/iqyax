@@ -1,0 +1,2 @@
+- There is no sign extension for b*z{al}?
+- merge fails for any optimization level beyond 0

@@ -1,4 +1,9 @@
+#include <iostream>
+#include <sstream>
+#include <iomanip>
+
 #include <chdl/chdl.h>
+#include <chdl/egress.h>
 #include <chdl/cassign.h>
 
 #include "interfaces.h"
@@ -7,13 +12,14 @@ using namespace std;
 using namespace chdl;
 using namespace s_core;
 
-void fetch(fetch_decode_t &out, exec_fetch_t &in, const char *hex_file);
+void fetch(fetch_decode_t &out, exec_fetch_t &in,
+           const char *hex_file, unsigned initial_pc);
 void decode(decode_reg_t &out, fetch_decode_t &in);
 void reg(reg_exec_t &out, decode_reg_t &in, mem_reg_t &in_wb);
 void exec(exec_mem_t &out, exec_fetch_t &out_pc, reg_exec_t &in, word_t &fwd);
 void mem(mem_reg_t &out, word_t &fwd, exec_mem_t &in);
 
-void simple_core(const char *hex_file) {
+void simple_core(const char *hex_file, unsigned initial_pc) {
   fetch_decode_t fetch_decode;
   decode_reg_t decode_reg;
   reg_exec_t reg_exec;
@@ -22,12 +28,12 @@ void simple_core(const char *hex_file) {
   mem_reg_t mem_reg;
   word_t mem_exec;
 
-                                                  // Pipeline:
-  fetch(fetch_decode, exec_fetch, hex_file);      //   STAGE 1
-  decode(decode_reg, fetch_decode);               //   STAGE 2
-  reg(reg_exec, decode_reg, mem_reg);             //     STAGE 5 (mem_reg)
-  exec(exec_mem, exec_fetch, reg_exec, mem_exec); //   STAGE 3
-  mem(mem_reg, mem_exec, exec_mem);               //   STAGE 4
+                                                         // Pipeline:
+  fetch(fetch_decode, exec_fetch, hex_file, initial_pc); //   STAGE 1
+  decode(decode_reg, fetch_decode);                      //   STAGE 2
+  reg(reg_exec, decode_reg, mem_reg);                    //     STAGE 5
+  exec(exec_mem, exec_fetch, reg_exec, mem_exec);        //   STAGE 3
+  mem(mem_reg, mem_exec, exec_mem);                      //   STAGE 4
 
   TAP(fetch_decode);
   TAP(decode_reg);
@@ -39,20 +45,28 @@ void simple_core(const char *hex_file) {
 }
 
 int main(int argc, char** argv) {
-  simple_core(argc >= 2 ? argv[argc - 1] : "score.hex");
+  unsigned initial_pc(0x400000);
+  if (argc >= 3) {
+    istringstream iss(argv[2]);
+    iss >> hex >> initial_pc;
+  }
+
+  simple_core((argc >= 2 ? argv[1] : "score.hex"), initial_pc);
 
   optimize();
 
   ofstream vcd("score.vcd");
-  run(vcd, 10000);
+  run(vcd, 100000);
 
   return 0;
 }
 
-void fetch(fetch_decode_t &out_buf, exec_fetch_t &in, const char *hex_file) {
+void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
+           const char *hex_file, unsigned initial_pc)
+{
   fetch_decode_t out;
 
-  word_t next_pc, pc(Reg(next_pc));
+  word_t next_pc, pc(Reg(next_pc, initial_pc));
   Cassign(next_pc).
     IF(_(in, "ldpc"), _(in, "val")).
     ELSE(pc + LitW(4));
@@ -95,10 +109,7 @@ void decode(decode_reg_t &out, fetch_decode_t &in) {
     opcode == Lit<6>(0x04) || // beq
     opcode == Lit<6>(0x05) || // bne
     opcode == Lit<6>(0x08) || // addi
-    opcode == Lit<6>(0x09) || // addiu
-    opcode == Lit<6>(0x0c) || // andi
-    opcode == Lit<6>(0x0d) || // ori
-    opcode == Lit<6>(0x0e);   // xori
+    opcode == Lit<6>(0x09);   // addiu
 
   imm_shift =
     opcode == Lit<6>(0x00) && (
@@ -403,9 +414,13 @@ void mem(mem_reg_t &out, word_t &fwd, exec_mem_t &in) {
     END().
     ELSE(Reg(_(in, "result")));
 
-  TAP(wr);
-  TAP(memq_word);
-  TAP(bytesel);
-  TAP(memd);
-  TAP(memq);
+  if (SOFT_IO) {
+    static unsigned consoleOutVal;
+    EgressInt(consoleOutVal, _(in, "result"));
+    node wrConsole(wr[0] && _(in, "addr") == Lit<N>(1ul<<(N-1)));
+
+    EgressFunc([](bool x){
+      if (x) cout << "OUTPUT> " << consoleOutVal << endl;
+    }, wrConsole);
+  }
 }

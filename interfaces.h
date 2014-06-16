@@ -2,6 +2,7 @@
 #include <chdl/chdl.h>
 
 namespace s_core {
+  const bool SOFT_IO(true);
   const unsigned N(32), IROM_SZ(10), RAM_SZ(20);
 
   typedef chdl::bvec<5> rname_t;
