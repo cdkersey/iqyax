@@ -335,7 +335,9 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
       IF(func == Lit<6>(0x03),                               // sra
         Shifter(val1, Zext<CLOG2(N)>(imm), Lit(1), Lit(0), Lit(1))).
       IF(func == Lit<6>(0x04), val1 << Zext<CLOG2(N)>(val0)). // sllv
-      IF(func == Lit<6>(0x06), val1 >> Zext<CLOG2(N)>(val0)). // srlv       
+      IF(func == Lit<6>(0x06), val1 >> Zext<CLOG2(N)>(val0)). // srlv
+      IF(func == Lit<6>(0x07),                                // srav
+        Shifter(val1, Zext<CLOG2(N)>(val0), Lit(1), Lit(0), Lit(1))).
       IF(func == Lit<6>(0x20), val0 + val1). // add
       IF(func == Lit<6>(0x21), val0 + val1). // addu
       IF(func == Lit<6>(0x22), val0 - val1). // sub
