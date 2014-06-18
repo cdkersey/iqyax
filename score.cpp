@@ -17,9 +17,9 @@ void fetch(fetch_decode_t &out, exec_fetch_t &in,
 void decode(decode_reg_t &out, fetch_decode_t &in);
 void reg(reg_exec_t &out, decode_reg_t &in, mem_reg_t &in_wb);
 void exec(exec_mem_t &out, exec_fetch_t &out_pc, reg_exec_t &in, word_t &fwd);
-void mem(mem_reg_t &out, word_t &fwd, exec_mem_t &in);
+void mem(mem_reg_t &out, word_t &fwd, exec_mem_t &in, bool &stop_sim);
 
-void simple_core(const char *hex_file, unsigned initial_pc) {
+void simple_core(const char *hex_file, unsigned initial_pc, bool &stop_sim) {
   fetch_decode_t fetch_decode;
   decode_reg_t decode_reg;
   reg_exec_t reg_exec;
@@ -33,7 +33,7 @@ void simple_core(const char *hex_file, unsigned initial_pc) {
   decode(decode_reg, fetch_decode);                      //   STAGE 2
   reg(reg_exec, decode_reg, mem_reg);                    //     STAGE 5
   exec(exec_mem, exec_fetch, reg_exec, mem_exec);        //   STAGE 3
-  mem(mem_reg, mem_exec, exec_mem);                      //   STAGE 4
+  mem(mem_reg, mem_exec, exec_mem, stop_sim);            //   STAGE 4
 
   TAP(fetch_decode);
   TAP(decode_reg);
@@ -45,18 +45,20 @@ void simple_core(const char *hex_file, unsigned initial_pc) {
 }
 
 int main(int argc, char** argv) {
+  bool stop_sim;
+
   unsigned initial_pc(0x400000);
   if (argc >= 3) {
     istringstream iss(argv[2]);
     iss >> hex >> initial_pc;
   }
 
-  simple_core((argc >= 2 ? argv[1] : "score.hex"), initial_pc);
+  simple_core((argc >= 2 ? argv[1] : "score.hex"), initial_pc, stop_sim);
 
   optimize();
 
   ofstream vcd("score.vcd");
-  run(vcd, 100000);
+  run(vcd, stop_sim, TMAX);
 
   return 0;
 }
@@ -374,7 +376,7 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   out_buf = Reg(Flatten(out));
 }
 
-void mem(mem_reg_t &out, word_t &fwd, exec_mem_t &in) {
+void mem(mem_reg_t &out, word_t &fwd, exec_mem_t &in, bool &stop_sim) {
   const unsigned B(N/8), BB(CLOG2(B));
 
   vec<B, bvec<8> > memq, memd;
@@ -417,10 +419,13 @@ void mem(mem_reg_t &out, word_t &fwd, exec_mem_t &in) {
   if (SOFT_IO) {
     static unsigned consoleOutVal;
     EgressInt(consoleOutVal, _(in, "result"));
-    node wrConsole(wr[0] && _(in, "addr") == Lit<N>(1ul<<(N-1)));
+    node wrConsole(wr[0] && _(in, "addr") == Lit<N>(1ul<<(N-1))),
+         stopSimNode(wr[0] && _(in, "addr") == Lit<N>((1ul<<N-1) + N/8));
 
     EgressFunc([](bool x){
       if (x) cout << "OUTPUT> " << consoleOutVal << endl;
     }, wrConsole);
+
+    Egress(stop_sim, stopSimNode);
   }
 }

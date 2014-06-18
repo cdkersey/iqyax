@@ -4,6 +4,7 @@
 namespace s_core {
   const bool SOFT_IO(true);
   const unsigned N(32), IROM_SZ(10), RAM_SZ(20);
+  const chdl::cycle_t TMAX(100000);
 
   typedef chdl::bvec<5> rname_t;
   typedef chdl::bvec<6> opcode_t;
