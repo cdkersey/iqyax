@@ -2,7 +2,7 @@
 #include <chdl/chdl.h>
 
 namespace s_core {
-  const bool SOFT_IO(true);
+  const bool SOFT_IO(true), DEBUG_MEM(false);
   const unsigned N(32), IROM_SZ(10), RAM_SZ(20);
   const chdl::cycle_t TMAX(100000);
 
@@ -75,8 +75,9 @@ namespace s_core {
           chdl::ag<STP("addr"), word_t,
           chdl::ag<STP("mem_rd"), chdl::node,
           chdl::ag<STP("mem_wr"), chdl::node,
-          chdl::ag<STP("mem_byte"), chdl::node
-  > > > > > > > exec_mem_t;
+          chdl::ag<STP("mem_byte"), chdl::node,
+          chdl::ag<STP("pc"), word_t
+  > > > > > > > > exec_mem_t;
 
   // Signals from memory to registers (writeback)
   typedef chdl::ag<STP("rdest_idx"), rname_t,

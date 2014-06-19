@@ -108,10 +108,16 @@ void decode(decode_reg_t &out, fetch_decode_t &in) {
   j_inst = opcode == Lit<6>(0x02) || opcode == Lit<6>(0x03);
 
   sext_imm =
+    opcode == Lit<6>(0x01) || // branch
     opcode == Lit<6>(0x04) || // beq
     opcode == Lit<6>(0x05) || // bne
     opcode == Lit<6>(0x08) || // addi
-    opcode == Lit<6>(0x09);   // addiu
+    opcode == Lit<6>(0x09) || // addiu
+    opcode == Lit<6>(0x20) || // lb
+    opcode == Lit<6>(0x23) || // lw
+    opcode == Lit<6>(0x28) || // sb
+    opcode == Lit<6>(0x2b);  //sw
+
 
   imm_shift =
     opcode == Lit<6>(0x00) && (
@@ -303,13 +309,14 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
     IF(op == Lit<6>(0x04) && val0 == val1, bdest). // beq
     IF(op == Lit<6>(0x05) && val0 != val1, bdest). // bne
     IF(op == Lit<6>(0x01)).
-      IF(func == Lit<6>(0x01) && val0 >= LitW(0), bdest). // bgez
-      IF(func == Lit<6>(0x10) && val0 < LitW(0), bdest). // bltzal
-      IF(func == Lit<6>(0x11) && val0 >= LitW(0), bdest). // bgezal
+      IF(func == Lit<6>(0x01) && !val0[N-1], bdest). // bgez
+      IF(func == Lit<6>(0x10) && val0[N-1], bdest). // bltzal
+      IF(func == Lit<6>(0x11) && !val0[N-1], bdest). // bgezal
+      ELSE(pc + LitW(4)).
     END().IF(op == Lit<6>(0x06)).
-      IF(func == Lit<6>(0x00) && val0 <= LitW(0), bdest). // blez
+      IF(func == Lit<6>(0x00) && (!OrN(val0) || val0[N-1]), bdest). // blez
     END().IF(op == Lit<6>(0x07)).
-      IF(func == Lit<6>(0x00) && val0 > LitW(0), bdest). // bgtz
+      IF(func == Lit<6>(0x00) && OrN(val0) && !val0[N-1], bdest). // bgtz
     END().    
     ELSE(pc + LitW(4));
 
@@ -358,13 +365,13 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
       IF(func == Lit<6>(0x24), val0 & val1). // and
       IF(func == Lit<6>(0x25), val0 | val1). // or
       IF(func == Lit<6>(0x26), val0 ^ val1). // xor
-      IF(func == Lit<6>(0x2a), Cat(Lit<N-1>(0), val0 < val1)). // slt
+      IF(func == Lit<6>(0x2a), Cat(Lit<N-1>(0), (val0 - val1)[N-1])). // slt
       IF(func == Lit<6>(0x2b),                                 // sltu
         Cat(Lit<N-1>(0), Zext<N+1>(val0) < Zext<N+1>(val1))).
     END().
     IF(op == Lit<6>(0x08), val0 + imm). // addi
     IF(op == Lit<6>(0x09), val0 + imm). // addiu
-    IF(op == Lit<6>(0x0a), Cat(Lit<N-1>(0), val0 < imm)). // slti
+    IF(op == Lit<6>(0x0a), Cat(Lit<N-1>(0), (val0 - imm)[N-1])). // slti
     IF(op == Lit<6>(0x0b),                                // sltiu
       Cat(Lit<N-1>(0), Zext<N+1>(val0) < Zext<N+1>(imm))).
     IF(op == Lit<6>(0x0c), val0 & imm). // andi
@@ -372,6 +379,8 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
     IF(op == Lit<6>(0x0e), val0 ^ imm). // xori
     IF(op == Lit<6>(0x0f), Cat(Zext<16>(imm), Lit<N-16>(0))). // lui
     ELSE(LitW(0));
+
+  _(out, "pc") = pc; // For debugging purposes.
 
   out_buf = Reg(Flatten(out));
 }
@@ -427,5 +436,29 @@ void mem(mem_reg_t &out, word_t &fwd, exec_mem_t &in, bool &stop_sim) {
     }, wrConsole);
 
     Egress(stop_sim, stopSimNode);
+  }
+
+  if (DEBUG_MEM) {
+    static unsigned dVal, qVal, prevAddrVal, addrVal, pcVal, prevPcVal;
+    EgressInt(prevAddrVal, Reg(_(in, "addr")));
+    EgressInt(addrVal, _(in, "addr"));
+    EgressInt(dVal, _(in, "result"));
+    EgressInt(qVal, memq_word);
+    EgressInt(pcVal, _(in, "pc"));
+    EgressInt(prevPcVal, Reg(_(in, "pc")));
+
+    EgressFunc([](bool x){
+      if (x) cout << "MEM WR> " << hex << pcVal << ", " << addrVal << '('
+                  << dec << addrVal << "), " << dVal << endl;
+    }, OrN(wr));
+
+    EgressFunc([](bool x){
+      if (x) cout << "MEM RD> " << hex << prevPcVal << '(' << prevAddrVal
+                  << "), " << dec << prevAddrVal << ", " << qVal << endl;
+    }, Reg(_(in, "mem_rd")));
+
+    EgressFunc([](bool x){
+      if (x) cout << sim_time() << " PC> " << hex << pcVal << dec << endl;
+   }, Lit(1));
   }
 }
