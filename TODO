@@ -1,7 +1,6 @@
 - Build an automated testing environment using a script something like:
   for x in ../mips_benchmarks/*.s; do
-    echo $x
-    ./score \
-      `echo $x | sed s/.s/.hex/` \
-      `grep start $x | sed s/ .*//` | grep OUTPUT
+    echo $x;
+    ./score `echo $x | sed 's/\.s/.hex/'` \
+            `grep start $x | sed 's/ .*//'` | grep OUTPUT;
   done | tee OUTPUT

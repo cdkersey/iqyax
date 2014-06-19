@@ -18,7 +18,8 @@ namespace s_core {
   typedef chdl::ag<STP("valid"), chdl::node,
           chdl::ag<STP("inst"), inst_t,
           chdl::ag<STP("next_pc"), word_t,
-          chdl::ag<STP("pc"), word_t
+          chdl::ag<STP("pc"), word_t,
+          chdl::ag<STP("stall"), chdl::node>
   > > > > fetch_decode_t;
 
   // Signals from decoder to regsiter file
@@ -39,6 +40,9 @@ namespace s_core {
           chdl::ag<STP("jal"), chdl::node,
           chdl::ag<STP("next_pc"), word_t,
           chdl::ag<STP("pc"), word_t
+#ifdef STALL_SIGNAL
+         ,chdl::ag<STP("stall"), chdl::node>
+#endif
   > > > > > > > > > > > > > > > > > decode_reg_t;
 
   // Signals from register stage to execute stage
@@ -61,6 +65,9 @@ namespace s_core {
           chdl::ag<STP("jal"), chdl::node,
           chdl::ag<STP("next_pc"), word_t,
           chdl::ag<STP("pc"), word_t
+#ifdef STALL_SIGNAL
+         ,chdl::ag<STP("stall"), chdl::node>
+#endif
   > > > > > > > > > > > > > > > > > > > reg_exec_t;
 
   // Signals from execute to fetch stage (branch mispredict)
