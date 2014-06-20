@@ -16,8 +16,8 @@ void fetch(fetch_decode_t &out, exec_fetch_t &in,
            const char *hex_file, unsigned initial_pc);
 void decode(decode_reg_t &out, fetch_decode_t &in);
 void reg(reg_exec_t &out, decode_reg_t &in, mem_reg_t &in_wb);
-void exec(exec_mem_t &out, exec_fetch_t &out_pc, reg_exec_t &in, word_t &fwd);
-void mem(mem_reg_t &out, word_t &fwd, exec_mem_t &in, bool &stop_sim);
+void exec(exec_mem_t &out, exec_fetch_t &out_pc, reg_exec_t &in, mem_exec_t &f);
+void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim);
 
 void simple_core(const char *hex_file, unsigned initial_pc, bool &stop_sim) {
   fetch_decode_t fetch_decode;
@@ -26,7 +26,7 @@ void simple_core(const char *hex_file, unsigned initial_pc, bool &stop_sim) {
   exec_mem_t exec_mem;
   exec_fetch_t exec_fetch;
   mem_reg_t mem_reg;
-  word_t mem_exec;
+  mem_exec_t mem_exec;
 
                                                          // Pipeline:
   fetch(fetch_decode, exec_fetch, hex_file, initial_pc); //   STAGE 1
@@ -57,6 +57,9 @@ int main(int argc, char** argv) {
 
   optimize();
 
+  ofstream cpr("score.cp");
+  critpath_report(cpr);
+
   ofstream vcd("score.vcd");
   run(vcd, stop_sim, TMAX);
 
@@ -66,23 +69,35 @@ int main(int argc, char** argv) {
 void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
            const char *hex_file, unsigned initial_pc)
 {
+  HIERARCHY_ENTER();
   fetch_decode_t out;
 
   word_t next_pc, pc(Reg(next_pc, initial_pc));
   Cassign(next_pc).
     IF(_(in, "ldpc"), _(in, "val")).
+#ifdef STALL_SIGNAL
+    IF(_(out_buf, "stall"), pc).
+#endif
     ELSE(pc + LitW(4));
 
   _(out, "inst") =
     LLRom<IROM_SZ, N>(Zext<IROM_SZ>(pc[range<CLOG2(N/8),N-1>()]), hex_file);
   _(out, "next_pc") = next_pc;
   _(out, "pc") = pc;
+
   _(out, "valid") = Lit(1);
 
+#ifdef STALL_SIGNAL
+  out_buf = Wreg(!_(out_buf, "stall"), Flatten(out));
+  _(out_buf, "valid") = Reg(_(out, "valid")) && !_(out_buf, "stall");
+#else
   out_buf = Reg(Flatten(out));
+#endif
+  HIERARCHY_EXIT();
 }
 
 void decode(decode_reg_t &out, fetch_decode_t &in) {
+  HIERARCHY_ENTER();
   inst_t inst(_(in, "inst"));
   opcode_t opcode(inst[range<N-6, N-1>()]);
   func_t func;
@@ -219,9 +234,16 @@ void decode(decode_reg_t &out, fetch_decode_t &in) {
   _(out, "pc") = _(in, "pc");
   _(out, "next_pc") = _(in, "next_pc");
   _(out, "valid") = _(in, "valid");
+
+  #ifdef STALL_SIGNAL
+  _(in, "stall") = _(out, "stall");
+  #endif
+
+  HIERARCHY_EXIT();
 }
 
 void reg(reg_exec_t &out_buf, decode_reg_t &in, mem_reg_t &in_wb) {
+  HIERARCHY_ENTER();
   reg_exec_t out;
 
   // These are expensive to implement as Regs instead of as a multi-port SRAM,
@@ -259,46 +281,88 @@ void reg(reg_exec_t &out_buf, decode_reg_t &in, mem_reg_t &in_wb) {
   _(out, "mem_byte") = _(in, "mem_byte");
   _(out, "imm") = _(in, "imm");
 
+  #ifdef STALL_SIGNAL
+  _(in, "stall") = _(out_buf, "stall");
+  out_buf = Wreg(!_(out_buf, "stall"), Flatten(out));
+  _(out_buf, "valid") = Wreg(!_(in, "stall"), _(out, "valid")) && !_(in, "stall");
+  #else
   out_buf = Reg(Flatten(out));
+  #endif
+
+  HIERARCHY_EXIT();
 }
 
 void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
-          word_t &mem_fwd)
+          mem_exec_t &mem_fwd)
 {
-  exec_mem_t out;
-
-  word_t actual_next_pc, pc(_(in, "pc")), next_pc(_(in, "next_pc")),
-         val0, val1, imm(_(in, "imm")),
-    bdest(pc + LitW(N/8) + imm * LitW(N/8)),
-         jdest(Cat(pc[range<N-4, N-1>()], Zext<N-4>(imm * LitW(N/8))));
+  HIERARCHY_ENTER();
 
   node in_valid;
+  exec_mem_t out;
 
-  Cassign(val0).
-    IF(_(in, "rsrc0_valid") && Reg(in_valid) && Reg(_(in, "rdest_valid")) &&
-         !Reg(_(in, "mem_rd")) && _(in, "rsrc0_idx") == Reg(_(in, "rdest_idx")),
-           Reg(_(out, "result"))).
-    IF(_(in, "rsrc0_valid") && Reg(Reg(in_valid))
-        && Reg(Reg(_(in, "rdest_valid"))) &&
-        _(in, "rsrc0_idx") == Reg(Reg(_(in, "rdest_idx")))).
-      IF(Reg(Reg(_(in, "mem_rd"))), mem_fwd).
-      ELSE(Reg(Reg(_(out, "result")))).
-    END().
+  #ifdef STALL_SIGNAL
+  // Test stall signal by generating random stalls.
+  unsigned stall_seed(0x1234);
+  bvec<15> stall_lfsr;
+  for (unsigned i = 1; i < 15; ++i) stall_lfsr[i] = Reg(stall_lfsr[i-1], (stall_seed>>i)&1);
+  stall_lfsr[0] = Reg(Xor(stall_lfsr[14], stall_lfsr[0]));
+  _(in, "stall") = stall_lfsr[14] || _(out_buf, "stall");
+  #endif
+
+  #ifdef STALL_SIGNAL  
+  node stall(_(in, "stall"));
+  #endif
+
+  word_t actual_next_pc, pc(_(in, "pc")), next_pc(_(in, "next_pc")),
+         val0, val0_in, val1, val1_in, imm(_(in, "imm")),
+         bdest(pc + LitW(N/8) + imm * LitW(N/8)),
+         jdest(Cat(pc[range<N-4, N-1>()], Zext<N-4>(imm * LitW(N/8))));
+
+  node wr_val_0, wr_val_1,
+       rdest_valid_1(_(out_buf, "rdest_valid")),
+       rdest_valid_2(_(mem_fwd, "rdest_valid")),
+       mem_rd_1(_(out_buf, "mem_rd")),
+       mem_rd_2(_(mem_fwd, "mem_rd"));
+  rname_t rdest_idx_1(_(out_buf, "rdest_idx")),
+          rdest_idx_2(_(mem_fwd, "rdest_idx"));
+  word_t result_1(_(out_buf, "result")),
+         result_2(_(mem_fwd, "result"));
+
+  node fwd_1_to_0(_(in, "rsrc0_valid") && rdest_valid_1 && !mem_rd_1 &&
+                    rdest_idx_1 == _(in, "rsrc0_idx")),
+       fwd_2_to_0(_(in, "rsrc0_valid") && rdest_valid_2 &&
+                    rdest_idx_2 == _(in, "rsrc0_idx")),
+       fwd_1_to_1(_(in, "rsrc1_valid") && rdest_valid_1 && !mem_rd_1 &&
+                    rdest_idx_1 == _(in, "rsrc1_idx")),
+       fwd_2_to_1(_(in, "rsrc1_valid") && rdest_valid_2 &&
+                    rdest_idx_2 == _(in, "rsrc1_idx"));
+
+  TAP(in_valid);
+
+  Cassign(val0_in).
+    IF(fwd_1_to_0, _(out_buf, "result")).
+    IF(fwd_2_to_0, _(mem_fwd, "result")).
     ELSE(_(in, "val0"));
 
-  Cassign(val1).
-    IF(_(in, "rsrc1_valid") && Reg(in_valid) && Reg(_(in, "rdest_valid")) &&
-         !Reg(_(in, "mem_rd")) && _(in, "rsrc1_idx") == Reg(_(in, "rdest_idx")),
-           Reg(_(out, "result"))).
-    IF(_(in, "rsrc1_valid") && Reg(Reg(in_valid)) &&
-       Reg(Reg(_(in, "rdest_valid"))) &&
-       _(in, "rsrc1_idx") == Reg(Reg(_(in, "rdest_idx")))).
-      IF(Reg(Reg(_(in, "mem_rd"))), mem_fwd).
-      ELSE(Reg(Reg(_(out, "result")))).
-    END().
+  Cassign(val1_in).
+    IF(fwd_1_to_1, _(out_buf, "result")).
+    IF(fwd_2_to_1, _(mem_fwd, "result")).
     ELSE(_(in, "val1"));
 
-  TAP(val0); TAP(val1);
+  #ifdef STALL_SIGNAL
+  wr_val_0 = ((stall||Reg(stall)) && (fwd_1_to_0 || fwd_2_to_0)) || !Reg(stall);
+  wr_val_1 = ((stall||Reg(stall)) && (fwd_1_to_1 || fwd_2_to_1)) || !Reg(stall);
+  #else
+  wr_val_0 = Lit(1);
+  wr_val_1 = Lit(1);
+  #endif
+
+  val0 = Latch(!wr_val_0, val0_in);
+  val1 = Latch(!wr_val_1, val1_in);
+
+  TAP(fwd_1_to_0); TAP(fwd_2_to_0); TAP(fwd_1_to_1); TAP(fwd_2_to_1);
+  TAP(val0); TAP(val1); TAP(val0_in); TAP(val1_in);
+  TAP(wr_val_0); TAP(wr_val_1);
 
   opcode_t op(_(in, "op"));
   func_t func(_(in, "func"));
@@ -331,6 +395,9 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   _(out_pc, "val") = actual_next_pc;
 
   Cassign(next_bubble_ctr).
+  #ifdef STALL_SIGNAL
+    IF(_(in, "stall"), bubble_ctr).
+  #endif
     IF(branch_mispredict, Lit<2>(2)).
     IF(bubble_ctr == Lit<2>(0), Lit<2>(0)).
     ELSE(bubble_ctr - Lit<2>(1));    
@@ -382,11 +449,26 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
 
   _(out, "pc") = pc; // For debugging purposes.
 
+  #ifdef STALL_SIGNAL
+  out_buf = Wreg(!stall, Flatten(out));
+  _(out_buf, "mem_rd") = Wreg(!stall, _(out, "mem_rd")) && !stall;
+  _(out_buf, "mem_wr") = Wreg(!stall, _(out, "mem_wr")) && !stall;
+  _(out_buf, "rdest_valid") = Wreg(!stall, _(out, "rdest_valid")) && !stall;
+  #else
   out_buf = Reg(Flatten(out));
+  #endif
+
+  HIERARCHY_EXIT();
 }
 
-void mem(mem_reg_t &out, word_t &fwd, exec_mem_t &in, bool &stop_sim) {
+void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
+  HIERARCHY_ENTER();
+
   const unsigned B(N/8), BB(CLOG2(B));
+
+  #ifdef STALL_SIGNAL
+  _(in, "stall") = Lit(0);
+  #endif
 
   vec<B, bvec<8> > memq, memd;
   bvec<CLOG2(N/8)> bytesel(_(in, "addr")[range<0, BB - 1>()]);
@@ -415,7 +497,10 @@ void mem(mem_reg_t &out, word_t &fwd, exec_mem_t &in, bool &stop_sim) {
   _(out, "rdest_idx") = Reg(_(in, "rdest_idx"));
   _(out, "rdest_valid") = Reg(_(in, "rdest_valid"));
 
-  fwd = _(out, "result");
+  // Copies of the input and output destinations and values for 
+  _(fwd, "rdest_idx") = _(out, "rdest_idx");
+  _(fwd, "rdest_valid") = _(out, "rdest_valid");
+  _(fwd, "result") = _(out, "result");
 
   // The final result: memory (word), memory(byte), or ALU
   Cassign(_(out, "result")).
@@ -439,15 +524,18 @@ void mem(mem_reg_t &out, word_t &fwd, exec_mem_t &in, bool &stop_sim) {
   }
 
   if (DEBUG_MEM) {
-    static unsigned dVal, qVal, prevAddrVal, addrVal, pcVal, prevPcVal;
+    static unsigned dVal, qVal, prevAddrVal, addrVal, pcVal, prevPcVal,
+                    resultVal;
     EgressInt(prevAddrVal, Reg(_(in, "addr")));
     EgressInt(addrVal, _(in, "addr"));
     EgressInt(dVal, _(in, "result"));
     EgressInt(qVal, memq_word);
     EgressInt(pcVal, _(in, "pc"));
     EgressInt(prevPcVal, Reg(_(in, "pc")));
+    EgressInt(resultVal, _(out, "result"));
 
     EgressFunc([](bool x){
+      if (sim_time() % 10 == 0) cout << "# " << sim_time() << endl;
       if (x) cout << "MEM WR> " << hex << pcVal << ", " << addrVal << '('
                   << dec << addrVal << "), " << dVal << endl;
     }, OrN(wr));
@@ -458,7 +546,12 @@ void mem(mem_reg_t &out, word_t &fwd, exec_mem_t &in, bool &stop_sim) {
     }, Reg(_(in, "mem_rd")));
 
     EgressFunc([](bool x){
-      if (x) cout << sim_time() << " PC> " << hex << pcVal << dec << endl;
-   }, Lit(1));
+      if (x) cout << "PC> " << hex << pcVal << dec << endl;
+    }, Lit(1));
+ 
+    EgressFunc([](bool x) {
+      if (x) cout << "RESULT> " << resultVal << endl;
+    }, _(out, "rdest_valid"));
   }
+  HIERARCHY_EXIT();
 }

@@ -10,4 +10,4 @@ score : score.o
 score.o : score.cpp interfaces.h
 
 clean:
-	rm -f score score.o *~ score.vcd
+	rm -f score score.o *~ score.vcd score.cp

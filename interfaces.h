@@ -1,8 +1,19 @@
 #include <chdl/ag.h>
 #include <chdl/chdl.h>
 
+// #define MUL_DIV
+// #define SCOREBOARD
+
+#ifdef MUL_DIV
+#define STALL_SIGNAL
+#endif
+
+#ifdef SCOREBOARD
+#define STALL_SIGNAL
+#endif
+
 namespace s_core {
-  const bool SOFT_IO(true), DEBUG_MEM(false);
+  const bool SOFT_IO(true), DEBUG_MEM(true);
   const unsigned N(32), IROM_SZ(10), RAM_SZ(20);
   const chdl::cycle_t TMAX(100000);
 
@@ -18,8 +29,10 @@ namespace s_core {
   typedef chdl::ag<STP("valid"), chdl::node,
           chdl::ag<STP("inst"), inst_t,
           chdl::ag<STP("next_pc"), word_t,
-          chdl::ag<STP("pc"), word_t,
-          chdl::ag<STP("stall"), chdl::node>
+          chdl::ag<STP("pc"), word_t
+          #ifdef STALL_SIGNAL
+           ,chdl::ag<STP("stall"), chdl::node>
+          #endif
   > > > > fetch_decode_t;
 
   // Signals from decoder to regsiter file
@@ -40,9 +53,9 @@ namespace s_core {
           chdl::ag<STP("jal"), chdl::node,
           chdl::ag<STP("next_pc"), word_t,
           chdl::ag<STP("pc"), word_t
-#ifdef STALL_SIGNAL
-         ,chdl::ag<STP("stall"), chdl::node>
-#endif
+          #ifdef STALL_SIGNAL
+           ,chdl::ag<STP("stall"), chdl::node>
+          #endif
   > > > > > > > > > > > > > > > > > decode_reg_t;
 
   // Signals from register stage to execute stage
@@ -65,9 +78,9 @@ namespace s_core {
           chdl::ag<STP("jal"), chdl::node,
           chdl::ag<STP("next_pc"), word_t,
           chdl::ag<STP("pc"), word_t
-#ifdef STALL_SIGNAL
-         ,chdl::ag<STP("stall"), chdl::node>
-#endif
+          #ifdef STALL_SIGNAL
+           ,chdl::ag<STP("stall"), chdl::node>
+          #endif
   > > > > > > > > > > > > > > > > > > > reg_exec_t;
 
   // Signals from execute to fetch stage (branch mispredict)
@@ -84,7 +97,17 @@ namespace s_core {
           chdl::ag<STP("mem_wr"), chdl::node,
           chdl::ag<STP("mem_byte"), chdl::node,
           chdl::ag<STP("pc"), word_t
+          #ifdef STALL_SIGNAL
+           ,chdl::ag<STP("stall"), chdl::node>
+          #endif
   > > > > > > > > exec_mem_t;
+
+  // Forwarding values and register names from last stage back to execute stage
+  typedef chdl::ag<STP("rdest_idx"), rname_t,
+          chdl::ag<STP("rdest_valid"), chdl::node,
+          chdl::ag<STP("result"), word_t,
+          chdl::ag<STP("mem_rd"), chdl::node
+  > > > > mem_exec_t;
 
   // Signals from memory to registers (writeback)
   typedef chdl::ag<STP("rdest_idx"), rname_t,
