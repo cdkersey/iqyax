@@ -8,6 +8,10 @@
 
 #include "interfaces.h"
 
+#ifdef MUL_DIV
+#include "muldiv.h"
+#endif
+
 using namespace std;
 using namespace chdl;
 using namespace s_core;
@@ -300,14 +304,17 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   node in_valid;
   exec_mem_t out;
 
-  #ifdef STALL_SIGNAL
+  #ifdef RANDOM_STALL
   // Test stall signal by generating random stalls.
   unsigned stall_seed(0x1234);
   bvec<15> stall_lfsr;
   for (unsigned i = 1; i < 15; ++i) stall_lfsr[i] = Reg(stall_lfsr[i-1], (stall_seed>>i)&1);
   stall_lfsr[0] = Reg(Xor(stall_lfsr[14], stall_lfsr[0]));
-  _(in, "stall") = stall_lfsr[14] || _(out_buf, "stall");
+  node random_stall = stall_lfsr[14] || _(out_buf, "stall");
   #endif
+
+  opcode_t op(_(in, "op"));
+  func_t func(_(in, "func"));
 
   #ifdef STALL_SIGNAL  
   node stall(_(in, "stall"));
@@ -364,9 +371,6 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   TAP(val0); TAP(val1); TAP(val0_in); TAP(val1_in);
   TAP(wr_val_0); TAP(wr_val_1);
 
-  opcode_t op(_(in, "op"));
-  func_t func(_(in, "func"));
-
   Cassign(actual_next_pc).
     IF(op == Lit<6>(0x02) || op == Lit<6>(0x03), jdest). // j, jal
     IF(op == Lit<6>(0x00) && func == Lit<6>(0x08), val0). // jr
@@ -413,6 +417,10 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   _(out, "rdest_idx") = _(in, "rdest_idx");
   _(out, "rdest_valid") = _(in, "rdest_valid") && in_valid;
 
+  #ifdef MUL_DIV
+  word_t hi, lo;
+  #endif
+
   Cassign(_(out, "result")).
     IF(_(in, "jal"), pc + LitW(N/8)). // jump/branch and link
     IF(_(in, "mem_wr"), val1). // Store
@@ -425,6 +433,10 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
       IF(func == Lit<6>(0x06), val1 >> Zext<CLOG2(N)>(val0)). // srlv
       IF(func == Lit<6>(0x07),                                // srav
         Shifter(val1, Zext<CLOG2(N)>(val0), Lit(1), Lit(0), Lit(1))).
+      #ifdef MUL_DIV
+      IF(func == Lit<6>(0x10), hi).
+      IF(func == Lit<6>(0x12), lo).
+      #endif
       IF(func == Lit<6>(0x20), val0 + val1). // add
       IF(func == Lit<6>(0x21), val0 + val1). // addu
       IF(func == Lit<6>(0x22), val0 - val1). // sub
@@ -456,6 +468,40 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   _(out_buf, "rdest_valid") = Wreg(!stall, _(out, "rdest_valid")) && !stall;
   #else
   out_buf = Reg(Flatten(out));
+  #endif
+
+  #ifdef MUL_DIV
+  node mfhi(op == Lit<6>(0x00) && func == Lit<6>(0x10)),
+       mflo(op == Lit<6>(0x00) && func == Lit<6>(0x12)),
+       mult(op == Lit<6>(0x00) && func == Lit<6>(0x18) && in_valid),
+       multu(op == Lit<6>(0x00) && func == Lit<6>(0x19) && in_valid),
+       mul_busy, start_mul(mult || multu);
+  bvec<2*N> mul_out, mul_a(Cat(bvec<N>(mult && val0[N-1]), val0)),
+            mul_b(Cat(bvec<N>(mult && val0[N-1]), val1));
+
+  TAP(hi); TAP(lo); TAP(mult); TAP(multu); TAP(mfhi); TAP(mflo);
+
+  mul_out = SerialMul(mul_busy, mul_a, mul_b, start_mul);
+
+  // TODO: Divider
+  hi = mul_out[range<N, 2*N-1>()];
+  lo = mul_out[range<0, N-1>()];
+
+  node muldiv_stall = (mfhi || mflo) && mul_busy;
+
+  TAP(mul_out); TAP(mul_a); TAP(mul_b); TAP(start_mul);
+  #endif
+
+  #ifdef STALL_SIGNAL
+  stall = 
+    #ifdef MUL_DIV
+    muldiv_stall
+    #endif
+    #ifdef RANDOM_STALL
+    || random_stall
+    #endif
+    || Lit(0)
+  ;
   #endif
 
   HIERARCHY_EXIT();

@@ -7,7 +7,7 @@ LDLIBS = -lchdl
 score : score.o
 	$(CXX) -o score $(CXXFLAGS) $(LDFLAGS) score.o $(LDLIBS)
 
-score.o : score.cpp interfaces.h
+score.o : score.cpp interfaces.h muldiv.h
 
 clean:
 	rm -f score score.o *~ score.vcd score.cp

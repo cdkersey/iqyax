@@ -1,7 +1,11 @@
+#ifndef SCORE_INTERFACES_H
+#define SCORE_INTERFACES_H
+
 #include <chdl/ag.h>
 #include <chdl/chdl.h>
 
-// #define MUL_DIV
+#define MUL_DIV
+// #define RANDOM_STALL
 // #define SCOREBOARD
 
 #ifdef MUL_DIV
@@ -115,3 +119,5 @@ namespace s_core {
           chdl::ag<STP("result"), word_t
   > > > mem_reg_t;
 };
+
+#endif
