@@ -391,7 +391,12 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   // When a branch is mispredicted, the next two inputs are to be considered
   // invalid.
   bvec<2> next_bubble_ctr, bubble_ctr(Reg(next_bubble_ctr));
-  node bubble(OrN(bubble_ctr));
+  node bubble;
+  #ifdef DELAYED_BRANCH
+  bubble = (bubble_ctr == Lit<2>(1));
+  #else
+  bubble = OrN(bubble_ctr);
+  #endif
   in_valid = _(in, "valid") && !bubble;
 
   node branch_mispredict(in_valid && next_pc != actual_next_pc);
@@ -475,19 +480,34 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
        mflo(op == Lit<6>(0x00) && func == Lit<6>(0x12)),
        mult(op == Lit<6>(0x00) && func == Lit<6>(0x18) && in_valid),
        multu(op == Lit<6>(0x00) && func == Lit<6>(0x19) && in_valid),
-       mul_busy, start_mul(mult || multu);
+       div(op == Lit<6>(0x00) && func == Lit<6>(0x1a) && in_valid),
+       divu(op == Lit<6>(0x00) && func == Lit<6>(0x1b) && in_valid),
+       mul_busy, start_mul(mult || multu), div_ready, div_busy, div_waiting,
+       start_div(div || divu), next_div_sel, div_sel(Reg(next_div_sel));
   bvec<2*N> mul_out, mul_a(Cat(bvec<N>(mult && val0[N-1]), val0)),
             mul_b(Cat(bvec<N>(mult && val0[N-1]), val1));
+  word_t div_out, div_rem;
 
   TAP(hi); TAP(lo); TAP(mult); TAP(multu); TAP(mfhi); TAP(mflo);
+  TAP(div); TAP(divu); TAP(div_out); TAP(div_rem); TAP(div_busy);
+  TAP(div_sel); TAP(next_div_sel);
+
+  div_busy = !div_ready && !div_waiting;
+
+  Cassign(next_div_sel).
+    IF(start_mul, Lit(0)).
+    IF(start_div, Lit(1)).
+    ELSE(div_sel);
 
   mul_out = SerialMul(mul_busy, mul_a, mul_b, start_mul);
+  SerialDiv(div_out, div_rem, div_ready, div_waiting,
+            val0, val1, start_div, Lit(0));
 
   // TODO: Divider
-  hi = mul_out[range<N, 2*N-1>()];
-  lo = mul_out[range<0, N-1>()];
+  hi = Mux(div_sel, mul_out[range<N, 2*N-1>()], div_rem);
+  lo = Mux(div_sel, mul_out[range<0, N-1>()], div_out);
 
-  node muldiv_stall = (mfhi || mflo) && mul_busy;
+  node muldiv_stall = (mfhi || mflo) && mul_busy || div_busy;
 
   TAP(mul_out); TAP(mul_a); TAP(mul_b); TAP(start_mul);
   #endif
@@ -592,7 +612,7 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
     }, Reg(_(in, "mem_rd")));
 
     EgressFunc([](bool x){
-      if (x) cout << "PC> " << hex << pcVal << dec << endl;
+      if (x) cout << sim_time() << " PC> " << hex << pcVal << dec << endl;
     }, Lit(1));
  
     EgressFunc([](bool x) {

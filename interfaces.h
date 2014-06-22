@@ -4,6 +4,7 @@
 #include <chdl/ag.h>
 #include <chdl/chdl.h>
 
+#define DELAYED_BRANCH
 #define MUL_DIV
 // #define RANDOM_STALL
 // #define SCOREBOARD
