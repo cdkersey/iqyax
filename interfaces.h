@@ -8,7 +8,10 @@
 #define MUL_DIV
 // #define RANDOM_STALL
 #define SCOREBOARD
+#define SST_MEM
+// #define MSHR
 
+// Handle dependencies between #defines:
 #ifdef MUL_DIV
 #define STALL_SIGNAL
 #endif
@@ -17,9 +20,13 @@
 #define STALL_SIGNAL
 #endif
 
+#ifdef SST_MEM
+#define MSHR
+#endif
+
 namespace s_core {
   const bool SOFT_IO(true), DEBUG_MEM(true);
-  const unsigned N(32), IROM_SZ(10), RAM_SZ(20);
+  const unsigned N(32), IROM_SZ(10), RAM_SZ(20), MSHR_SZ(8);
   const chdl::cycle_t TMAX(100000);
 
   typedef chdl::bvec<5> rname_t;

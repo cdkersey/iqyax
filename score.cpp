@@ -12,6 +12,12 @@
 #include "muldiv.h"
 #endif
 
+#ifdef SST_MEM
+#define SIM_
+#include "chdl-sst.h"
+#undef SIM_
+#endif
+
 using namespace std;
 using namespace chdl;
 using namespace s_core;
@@ -66,8 +72,12 @@ int main(int argc, char** argv) {
   ofstream cpr("score.cp");
   critpath_report(cpr);
 
+  #ifdef SST_MEM
+  chdl_sst_sim_run(stop_sim, TMAX);
+  #else
   ofstream vcd("score.vcd");
   run(vcd, stop_sim, TMAX);
+  #endif
 
   return 0;
 }
@@ -562,16 +572,15 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   #ifdef STALL_SIGNAL
   stall = 
     #ifdef MUL_DIV
-    muldiv_stall
+    muldiv_stall ||
     #endif
     #ifdef RANDOM_STALL
-    || random_stall
+    random_stall ||
     #endif
     #ifdef SCOREBOARD
-    || stall_scoreboard_0 || stall_scoreboard_1
+    stall_scoreboard_0 || stall_scoreboard_1 ||
     #endif
-    || Lit(0)
-  ;
+    _(out_buf, "stall");
   #endif
 
   HIERARCHY_EXIT();
@@ -587,7 +596,7 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
   #endif
 
   vec<B, bvec<8> > memq, memd;
-  bvec<CLOG2(N/8)> bytesel(_(in, "addr")[range<0, BB - 1>()]);
+  bvec<BB> bytesel(_(in, "addr")[range<0, BB - 1>()]);
   bvec<B> wr(Decoder(bytesel, _(in, "mem_wr")) |
             bvec<B>(_(in, "mem_wr") && !_(in, "mem_byte")));
 
@@ -625,6 +634,34 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
       ELSE(memq_word).
     END().
     ELSE(Reg(_(in, "result")));
+
+  #ifdef MSHR
+  typedef ag<STP("valid"), node,
+          ag<STP("rdest"), rname_t,
+          ag<STP("byte"), node,
+          ag<STP("bytesel"), bvec<BB> > > > > mshr_entry_t;
+
+  mshr_entry_t mshr_in;
+  _(mshr_in, "valid") = _(in, "mem_rd");
+  _(mshr_in, "rdest") = _(in, "rdest_idx");
+  _(mshr_in, "byte") = _(in, "mem_byte");
+  _(mshr_in, "bytesel") = bytesel;
+
+  bvec<MSHR_SZ> next_mshr_occupied, mshr_occupied(Reg(next_mshr_occupied));
+  bvec<CLOG2(MSHR_SZ)> mshr_tag(Log2(~mshr_occupied)), mem_resp_tag;
+  node mem_resp_valid;
+  for (unsigned i = 0; i < MSHR_SZ; ++i) {
+    Cassign(next_mshr_occupied[i]).
+      IF(_(mshr_in, "valid") && mshr_tag == Lit<CLOG2(MSHR_SZ)>(i), Lit(1)).
+      IF(mem_resp_tag == Lit<CLOG2(MSHR_SZ)>(i) && mem_resp_valid, Lit(0)).
+      ELSE(mshr_occupied[i]);
+  }
+
+  // TODO: undisable this when we get a way to un-fill the MSHRs
+  node mshr_full(Lit(0) && AndN(mshr_occupied));
+
+  TAP(mshr_in); TAP(mshr_tag); TAP(mshr_occupied); TAP(mshr_full);
+  #endif
 
   if (SOFT_IO) {
     static unsigned consoleOutVal;
@@ -669,5 +706,15 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
       if (x) cout << "RESULT> " << resultVal << endl;
     }, _(out, "rdest_valid"));
   }
+
+  #ifdef STALL_SIGNAL
+  _(in, "stall") = 
+    #ifdef MSHR
+    mshr_full ||
+    #endif
+    Lit(0)
+  ;
+  #endif
+
   HIERARCHY_EXIT();
 }

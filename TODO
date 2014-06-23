@@ -1,5 +1,6 @@
-- Replace the LFSR stall signal genreator with actual devices that might produce
-  stalls.
+- Interface to external asynchronous memory
+- Branch predictor
+- Cache
 - Build an automated testing environment using a script something like:
   for x in ../mips_benchmarks/*.s; do
     echo $x;
