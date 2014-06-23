@@ -7,7 +7,7 @@
 #define DELAYED_BRANCH
 #define MUL_DIV
 // #define RANDOM_STALL
-// #define SCOREBOARD
+#define SCOREBOARD
 
 #ifdef MUL_DIV
 #define STALL_SIGNAL

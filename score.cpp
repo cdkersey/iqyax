@@ -59,6 +59,8 @@ int main(int argc, char** argv) {
 
   simple_core((argc >= 2 ? argv[1] : "score.hex"), initial_pc, stop_sim);
 
+  if (cycdet()) { cerr << "Error: Cycle detected.\n"; return 1; }
+
   optimize();
 
   ofstream cpr("score.cp");
@@ -215,8 +217,13 @@ void decode(decode_reg_t &out, fetch_decode_t &in) {
 
   _(out, "rdest_valid") =
     _(in, "valid") && (
-      opcode == Lit<6>(0x00) || // ALU
-      dest_t || dest_31); // All of the instructions listed above
+      opcode == Lit<6>(0x00) && // ALU
+        func != Lit<6>(0x08) && // jr
+        func != Lit<6>(0x18) && // mult
+        func != Lit<6>(0x19) && // multu
+        func != Lit<6>(0x1a) && // div
+        func != Lit<6>(0x1b)    // divu
+      || dest_t || dest_31); // All of the instructions listed above
 
   _(out, "mem_rd") =
     _(in, "valid") && (
@@ -503,13 +510,53 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   SerialDiv(div_out, div_rem, div_ready, div_waiting,
             val0, val1, start_div, Lit(0));
 
-  // TODO: Divider
   hi = Mux(div_sel, mul_out[range<N, 2*N-1>()], div_rem);
   lo = Mux(div_sel, mul_out[range<0, N-1>()], div_out);
 
   node muldiv_stall = (mfhi || mflo) && mul_busy || div_busy;
 
   TAP(mul_out); TAP(mul_a); TAP(mul_b); TAP(start_mul);
+  #endif
+
+  #ifdef SCOREBOARD
+  node set_scoreboard(_(mem_fwd, "rdest_valid")),
+       clear_scoreboard(_(out, "mem_rd") && in_valid),
+       check_scoreboard_0(_(in, "rsrc0_valid")),
+       check_scoreboard_1(_(in, "rsrc1_valid"));
+  rname_t set_scoreboard_idx(_(mem_fwd, "rdest_idx")),
+          clear_scoreboard_idx(_(in, "rdest_idx")),
+          check_scoreboard_0_idx(_(in, "rsrc0_idx")),
+          check_scoreboard_1_idx(_(in, "rsrc1_idx"));
+
+  bvec<32> next_scoreboard, cur_scoreboard,
+           scoreboard(cur_scoreboard |
+                        (Cat(Lit<31>(0),set_scoreboard)<<set_scoreboard_idx));
+  for (unsigned i = 0; i < 32; ++i) {
+    node clear(clear_scoreboard && clear_scoreboard_idx == Lit<5>(i)),
+         set(set_scoreboard && set_scoreboard_idx == Lit<5>(i));
+    Cassign(next_scoreboard[i]).
+      IF(clear, Lit(0)).
+      IF(set, Lit(1)).
+      ELSE(scoreboard[i]);
+  }
+  cur_scoreboard = Reg(next_scoreboard, 0xffffffffu);
+
+  node stall_scoreboard_0(check_scoreboard_0 &&
+                            !Mux(check_scoreboard_0_idx, scoreboard)),
+       stall_scoreboard_1(check_scoreboard_1 &&
+                            !Mux(check_scoreboard_1_idx, scoreboard));
+
+  TAP(cur_scoreboard);
+  TAP(next_scoreboard);
+  TAP(scoreboard);
+  TAP(set_scoreboard);
+  TAP(clear_scoreboard);
+  TAP(check_scoreboard_0);
+  TAP(check_scoreboard_0_idx);
+  TAP(stall_scoreboard_0);
+  TAP(check_scoreboard_1);
+  TAP(check_scoreboard_1_idx);
+  TAP(stall_scoreboard_1);
   #endif
 
   #ifdef STALL_SIGNAL
@@ -519,6 +566,9 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
     #endif
     #ifdef RANDOM_STALL
     || random_stall
+    #endif
+    #ifdef SCOREBOARD
+    || stall_scoreboard_0 || stall_scoreboard_1
     #endif
     || Lit(0)
   ;
