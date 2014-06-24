@@ -7,8 +7,9 @@
 #define DELAYED_BRANCH
 #define MUL_DIV
 // #define RANDOM_STALL
-#define SCOREBOARD
+// #define SCOREBOARD
 #define SST_MEM
+//#define INTERNAL_MEM
 // #define MSHR
 
 // Handle dependencies between #defines:

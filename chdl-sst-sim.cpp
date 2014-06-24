@@ -71,7 +71,7 @@ void tick_eq(cycle_t t) {
       // This coresponds with how this is handled in SST now. Once a queue or
       // similar is added in SST, we can deflect these to later cycles by not
       // processing them and changning eq.find(t) to eq.begin() above
-      cout << "Not ready on attempt to write response.";
+      cerr << "Not ready on attempt to write response.";
       abort();
     }
 
@@ -87,21 +87,18 @@ void tick_eq(cycle_t t) {
 
 void processReq(cycle_t now, memUnit_t *m) {
   if (m->req.valid) {
-    cout << "MEM " << (m->req.wr ? "WRITE":"READ") << ' '
-         << (m->req.addr)/m->req.size;
+    cout << "MEM " << (m->req.wr?"WRITE":"READ") << ' ' << m->req.addr;
     if (m->req.wr) cout << ", " << (m->req.data);
     cout << endl;
 
-    cycle_t respTime(now + (rand()&0x03));
+    cycle_t respTime(now + (rand()&0x07));
     unsigned long rd_data;
     if (m->req.wr) {
       m->contents[m->req.addr] = m->req.data;
-      cout << "  MEM WRITE " << (m->req.addr)/m->req.size << ", "
-           << m->req.data << endl;
+      cout << "  MEM WRITE " << m->req.addr << ", " << m->req.data << endl;
     } else {
       rd_data = m->contents[m->req.addr];
-      cout << "  MEM READ " << (m->req.addr)/m->req.size << ", "
-           << rd_data << endl;
+      cout << "  MEM READ " << m->req.addr << ", " << rd_data << endl;
     }
     
     sched_resp(respTime, m, rd_data, m->req.id, m->req.wr);

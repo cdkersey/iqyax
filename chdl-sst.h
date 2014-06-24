@@ -11,7 +11,7 @@ const unsigned ADDR_SZ(32), DATA_SZ(32), ID_SZ(5);
 typedef chdl::flit<
   chdl::ag<STP("wr"), chdl::node,
   chdl::ag<STP("addr"), chdl::bvec<ADDR_SZ>,
-  chdl::ag<STP("size"), chdl::bvec<chdl::CLOG2(DATA_SZ/8)>,
+  chdl::ag<STP("size"), chdl::bvec<chdl::CLOG2(DATA_SZ/8 + 1)>,
   chdl::ag<STP("data"), chdl::bvec<DATA_SZ>,
   chdl::ag<STP("uncached"), chdl::node,
   chdl::ag<STP("llsc"), chdl::node,

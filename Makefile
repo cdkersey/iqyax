@@ -12,4 +12,4 @@ chdl-sst-sim.o: chdl-sst-sim.cpp chdl-sst.h
 score.o : score.cpp interfaces.h muldiv.h chdl-sst.h
 
 clean:
-	rm -f score score.o *~ score.vcd score.cp
+	rm -f score *.o *~ score.vcd score.cp

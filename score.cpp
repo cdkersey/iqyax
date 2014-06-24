@@ -55,7 +55,7 @@ void simple_core(const char *hex_file, unsigned initial_pc, bool &stop_sim) {
 }
 
 int main(int argc, char** argv) {
-  bool stop_sim;
+  bool stop_sim(false);
 
   unsigned initial_pc(0x400000);
   if (argc >= 3) {
@@ -73,7 +73,8 @@ int main(int argc, char** argv) {
   critpath_report(cpr);
 
   #ifdef SST_MEM
-  chdl_sst_sim_run(stop_sim, TMAX);
+  bool x(false);
+  chdl_sst_sim_run(/*stop_sim*/x, TMAX);
   #else
   ofstream vcd("score.vcd");
   run(vcd, stop_sim, TMAX);
@@ -334,7 +335,7 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   func_t func(_(in, "func"));
 
   #ifdef STALL_SIGNAL  
-  node stall(_(in, "stall"));
+  node gen_stall, stall(_(in, "stall"));
   #endif
 
   word_t actual_next_pc, pc(_(in, "pc")), next_pc(_(in, "next_pc")),
@@ -485,9 +486,9 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
 
   #ifdef STALL_SIGNAL
   out_buf = Wreg(!stall, Flatten(out));
-  _(out_buf, "mem_rd") = Wreg(!stall, _(out, "mem_rd")) && !stall;
-  _(out_buf, "mem_wr") = Wreg(!stall, _(out, "mem_wr")) && !stall;
-  _(out_buf, "rdest_valid") = Wreg(!stall, _(out, "rdest_valid")) && !stall;
+  _(out_buf, "mem_rd") = Wreg(!stall, _(out, "mem_rd")) && !gen_stall;
+  _(out_buf, "mem_wr") = Wreg(!stall, _(out, "mem_wr")) && !gen_stall;
+  _(out_buf, "rdest_valid") = Wreg(!stall, _(out, "rdest_valid")) && !gen_stall;
   #else
   out_buf = Reg(Flatten(out));
   #endif
@@ -570,7 +571,7 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   #endif
 
   #ifdef STALL_SIGNAL
-  stall = 
+  gen_stall = 
     #ifdef MUL_DIV
     muldiv_stall ||
     #endif
@@ -580,7 +581,9 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
     #ifdef SCOREBOARD
     stall_scoreboard_0 || stall_scoreboard_1 ||
     #endif
-    _(out_buf, "stall");
+    Lit(0);
+
+  stall = _(out_buf, "stall") || gen_stall;
   #endif
 
   HIERARCHY_EXIT();
@@ -594,9 +597,10 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
   #ifdef STALL_SIGNAL
   _(in, "stall") = Lit(0);
   #endif
-
   vec<B, bvec<8> > memq, memd;
   bvec<BB> bytesel(_(in, "addr")[range<0, BB - 1>()]);
+
+  #ifdef INTERNAL_MEM
   bvec<B> wr(Decoder(bytesel, _(in, "mem_wr")) |
             bvec<B>(_(in, "mem_wr") && !_(in, "mem_byte")));
 
@@ -617,23 +621,12 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
   for (unsigned i = 0; i < B; ++i)
     for (unsigned j = 0; j < 8; ++j)
       memq_word[i*8 + j] = memq[i][j];
-
-  // The destination register signals
-  _(out, "rdest_idx") = Reg(_(in, "rdest_idx"));
-  _(out, "rdest_valid") = Reg(_(in, "rdest_valid"));
+  #endif
 
   // Copies of the input and output destinations and values for 
   _(fwd, "rdest_idx") = _(out, "rdest_idx");
   _(fwd, "rdest_valid") = _(out, "rdest_valid");
   _(fwd, "result") = _(out, "result");
-
-  // The final result: memory (word), memory(byte), or ALU
-  Cassign(_(out, "result")).
-    IF(Reg(_(in, "mem_rd"))).
-      IF(Reg(_(in, "mem_byte")), Zext<N>(Mux(Reg(bytesel), memq))).
-      ELSE(memq_word).
-    END().
-    ELSE(Reg(_(in, "result")));
 
   #ifdef MSHR
   typedef ag<STP("valid"), node,
@@ -641,7 +634,7 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
           ag<STP("byte"), node,
           ag<STP("bytesel"), bvec<BB> > > > > mshr_entry_t;
 
-  mshr_entry_t mshr_in;
+  mshr_entry_t mshr_in, mshr_out;
   _(mshr_in, "valid") = _(in, "mem_rd");
   _(mshr_in, "rdest") = _(in, "rdest_idx");
   _(mshr_in, "byte") = _(in, "mem_byte");
@@ -657,17 +650,77 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
       ELSE(mshr_occupied[i]);
   }
 
-  // TODO: undisable this when we get a way to un-fill the MSHRs
-  node mshr_full(Lit(0) && AndN(mshr_occupied));
+  mshr_out = Syncmem(mem_resp_tag,
+                     Flatten(mshr_in), mshr_tag, _(mshr_in, "valid"));
+
+  node mshr_full(AndN(mshr_occupied) && Lit(0)); // TODO
 
   TAP(mshr_in); TAP(mshr_tag); TAP(mshr_occupied); TAP(mshr_full);
+
+  #ifdef SST_MEM
+  simpleMemReq_t sst_req;
+  simpleMemResp_t sst_resp;
+
+  _(sst_req, "valid") = (_(in, "mem_rd") || _(in, "mem_wr")) && !_(in, "stall");
+  node sst_not_ready(
+    (_(in, "mem_rd") || _(in, "mem_wr")) && !_(sst_req, "ready")
+  );
+  _(_(sst_req, "contents"), "wr") = _(in, "mem_wr");
+  _(_(sst_req, "contents"), "addr") = Zext<ADDR_SZ>(_(in, "addr"));
+  _(_(sst_req, "contents"), "size") =
+    Zext<CLOG2(DATA_SZ/8 + 1)>(Mux(_(in, "mem_byte"), LitW(N/8), LitW(1)));
+  _(_(sst_req, "contents"), "data") = Zext<DATA_SZ>(_(in, "result"));
+  _(_(sst_req, "contents"), "uncached") = Lit(0);
+  _(_(sst_req, "contents"), "llsc") = Lit(0);
+  _(_(sst_req, "contents"), "locked") = Lit(0);
+  _(_(sst_req, "contents"), "id") = Zext<ID_SZ>(mshr_tag); 
+
+  SimpleMemReqPort("0", sst_req);
+
+  _(sst_resp, "ready") = Lit(1);
+  mem_resp_valid = _(sst_resp, "valid") && !_(_(sst_resp, "contents"), "wr");
+  mem_resp_tag = Zext<CLOG2(MSHR_SZ)>(_(_(sst_resp, "contents"), "id"));
+  SimpleMemRespPort("0", sst_resp);
+
+  TAP(sst_req);
+  TAP(sst_resp);
+
   #endif
+
+  #endif
+
+  // The destination register signals
+  _(out, "rdest_idx") = Reg(_(in, "rdest_idx"));
+  _(out, "rdest_valid") = 
+  #ifdef INTERNAL_MEM
+    Reg(_(in, "rdest_valid"));
+  #endif
+  #ifdef SST_MEM
+    _(sst_resp, "valid");
+  #endif
+
+  // The final result: memory (word), memory(byte), or ALU
+  Cassign(_(out, "result")).
+    #ifdef INTERNAL_MEM
+    IF(Reg(_(in, "mem_rd"))).
+      IF(Reg(_(in, "mem_byte")), Zext<N>(Mux(Reg(bytesel), memq))).
+      ELSE(memq_word).
+    END().
+    #endif
+    #ifdef SST_MEM
+    IF(mem_resp_valid).
+      IF(_(mshr_out, "byte"),
+           Zext<N>(Zext<8>(_(_(sst_resp, "contents"), "data")))).
+      ELSE(Zext<N>(_(_(sst_resp, "contents"), "data"))).
+    END().
+    #endif
+    ELSE(Reg(_(in, "result")));
 
   if (SOFT_IO) {
     static unsigned consoleOutVal;
     EgressInt(consoleOutVal, _(in, "result"));
-    node wrConsole(wr[0] && _(in, "addr") == Lit<N>(1ul<<(N-1))),
-         stopSimNode(wr[0] && _(in, "addr") == Lit<N>((1ul<<N-1) + N/8));
+    node wrConsole(_(in, "mem_wr") && _(in, "addr") == Lit<N>(1ul<<(N-1))),
+         stopSimNode(_(in, "mem_wr") && _(in, "addr")==Lit<N>((1ul<<N-1)+N/8));
 
     EgressFunc([](bool x){
       if (x) cout << "OUTPUT> " << consoleOutVal << endl;
@@ -682,7 +735,7 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
     EgressInt(prevAddrVal, Reg(_(in, "addr")));
     EgressInt(addrVal, _(in, "addr"));
     EgressInt(dVal, _(in, "result"));
-    EgressInt(qVal, memq_word);
+    EgressInt(qVal, _(out, "result"));
     EgressInt(pcVal, _(in, "pc"));
     EgressInt(prevPcVal, Reg(_(in, "pc")));
     EgressInt(resultVal, _(out, "result"));
@@ -691,7 +744,7 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
       if (sim_time() % 10 == 0) cout << "# " << sim_time() << endl;
       if (x) cout << "MEM WR> " << hex << pcVal << ", " << addrVal << '('
                   << dec << addrVal << "), " << dVal << endl;
-    }, OrN(wr));
+    }, _(in, "mem_wr"));
 
     EgressFunc([](bool x){
       if (x) cout << "MEM RD> " << hex << prevPcVal << '(' << prevAddrVal
@@ -712,8 +765,10 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
     #ifdef MSHR
     mshr_full ||
     #endif
-    Lit(0)
-  ;
+    #ifdef SST_MEM
+    sst_not_ready ||
+    #endif
+    Lit(0);
   #endif
 
   HIERARCHY_EXIT();
