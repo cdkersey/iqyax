@@ -62,6 +62,8 @@ void tick_eq(cycle_t t) {
     memUnit_t &m(*r.dest);
 
     if (m.resp.ready) {
+      cout << "Resp: " << r.wr << ", " << r.id << ", "
+           << hex << r.data << dec << endl;
       m.resp.valid = true;
 
       m.resp.data = r.data;
@@ -87,21 +89,19 @@ void tick_eq(cycle_t t) {
 
 void processReq(cycle_t now, memUnit_t *m) {
   if (m->req.valid) {
-    cout << "MEM " << (m->req.wr?"WRITE":"READ") << ' ' << m->req.addr;
+    cout << "MEM " << (m->req.wr?"WRITE":"READ") << ' ' << m->req.id
+         << ' ' << hex << m->req.addr << dec;
     if (m->req.wr) cout << ", " << (m->req.data);
     cout << endl;
 
-    cycle_t respTime(now + (rand()&0x07));
+    cycle_t respTime(now + (rand()&0x1f));
+    while (eq.find(respTime) != eq.end()) ++respTime;
+    cout << "  resp scheduled for " << respTime << endl;
     unsigned long rd_data;
-    if (m->req.wr) {
-      m->contents[m->req.addr] = m->req.data;
-      cout << "  MEM WRITE " << m->req.addr << ", " << m->req.data << endl;
-    } else {
-      rd_data = m->contents[m->req.addr];
-      cout << "  MEM READ " << m->req.addr << ", " << rd_data << endl;
-    }
+    if (m->req.wr) m->contents[m->req.addr] = m->req.data;
+    else           rd_data = m->contents[m->req.addr];
     
-    sched_resp(respTime, m, rd_data, m->req.id, m->req.wr);
+    sched_resp(respTime, m, (m->req.wr?0:rd_data), m->req.id, m->req.wr);
   }
 }
 
@@ -139,13 +139,22 @@ extern unsigned aval, pcval, irval, seqval, mdrval;
 extern bool rvval, rwval;
 
 void chdl_sst_sim_run(bool &stop, cycle_t c) {
+  ofstream vcd("score.vcd");
+
+  print_vcd_header(vcd);
+  print_time(vcd);
+  print_taps(vcd);
   for (unsigned i = 0; i < c && !stop; ++i) {
     advance();
+
+    print_taps(vcd);
 
     for (auto &x : mu)
       processReq(i, x.second);
 
     tick_eq(i);
+
+    print_time(vcd);
   }
 }
 

@@ -1,3 +1,4 @@
+- Basic performance counters
 - Interface to external asynchronous memory
 - Branch predictor
 - Cache

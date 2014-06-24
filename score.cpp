@@ -6,6 +6,8 @@
 #include <chdl/egress.h>
 #include <chdl/cassign.h>
 
+#include <chdl/counter.h>
+
 #include "interfaces.h"
 
 #ifdef MUL_DIV
@@ -73,8 +75,7 @@ int main(int argc, char** argv) {
   critpath_report(cpr);
 
   #ifdef SST_MEM
-  bool x(false);
-  chdl_sst_sim_run(/*stop_sim*/x, TMAX);
+  chdl_sst_sim_run(stop_sim, TMAX);
   #else
   ofstream vcd("score.vcd");
   run(vcd, stop_sim, TMAX);
@@ -302,6 +303,7 @@ void reg(reg_exec_t &out_buf, decode_reg_t &in, mem_reg_t &in_wb) {
   _(out, "jal") = _(in, "jal");
   _(out, "mem_byte") = _(in, "mem_byte");
   _(out, "imm") = _(in, "imm");
+  _(out, "imm_valid") = _(in, "imm_valid");
 
   #ifdef STALL_SIGNAL
   _(in, "stall") = _(out_buf, "stall");
@@ -530,38 +532,42 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   #endif
 
   #ifdef SCOREBOARD
-  node set_scoreboard(_(mem_fwd, "rdest_valid")),
+  node set_scoreboard(_(mem_fwd, "rdest_valid") && _(mem_fwd, "mem_rd")),
        clear_scoreboard(_(out, "mem_rd") && in_valid),
        check_scoreboard_0(_(in, "rsrc0_valid")),
-       check_scoreboard_1(_(in, "rsrc1_valid"));
+       check_scoreboard_1(_(in, "rsrc1_valid")),
+      check_scoreboard_dest(_(in, "rdest_valid"));
   rname_t set_scoreboard_idx(_(mem_fwd, "rdest_idx")),
           clear_scoreboard_idx(_(in, "rdest_idx")),
           check_scoreboard_0_idx(_(in, "rsrc0_idx")),
-          check_scoreboard_1_idx(_(in, "rsrc1_idx"));
+          check_scoreboard_1_idx(_(in, "rsrc1_idx")),
+          check_scoreboard_dest_idx(_(in, "rdest_idx"));
 
-  bvec<32> next_scoreboard, cur_scoreboard,
-           scoreboard(cur_scoreboard |
-                        (Cat(Lit<31>(0),set_scoreboard)<<set_scoreboard_idx));
+  bvec<32> next_scoreboard, cur_scoreboard, scoreboard(cur_scoreboard);
   for (unsigned i = 0; i < 32; ++i) {
     node clear(clear_scoreboard && clear_scoreboard_idx == Lit<5>(i)),
          set(set_scoreboard && set_scoreboard_idx == Lit<5>(i));
     Cassign(next_scoreboard[i]).
       IF(clear, Lit(0)).
       IF(set, Lit(1)).
-      ELSE(scoreboard[i]);
+      ELSE(cur_scoreboard[i]);
   }
   cur_scoreboard = Reg(next_scoreboard, 0xffffffffu);
 
   node stall_scoreboard_0(check_scoreboard_0 &&
                             !Mux(check_scoreboard_0_idx, scoreboard)),
        stall_scoreboard_1(check_scoreboard_1 &&
-                            !Mux(check_scoreboard_1_idx, scoreboard));
+                            !Mux(check_scoreboard_1_idx, scoreboard)),
+       stall_scoreboard_dest(check_scoreboard_dest && 
+                            !Mux(check_scoreboard_dest_idx, scoreboard));
 
   TAP(cur_scoreboard);
   TAP(next_scoreboard);
   TAP(scoreboard);
   TAP(set_scoreboard);
+  TAP(set_scoreboard_idx);
   TAP(clear_scoreboard);
+  TAP(clear_scoreboard_idx);
   TAP(check_scoreboard_0);
   TAP(check_scoreboard_0_idx);
   TAP(stall_scoreboard_0);
@@ -579,7 +585,7 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
     random_stall ||
     #endif
     #ifdef SCOREBOARD
-    stall_scoreboard_0 || stall_scoreboard_1 ||
+    stall_scoreboard_0 || stall_scoreboard_1 || stall_scoreboard_dest ||
     #endif
     Lit(0);
 
@@ -623,11 +629,6 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
       memq_word[i*8 + j] = memq[i][j];
   #endif
 
-  // Copies of the input and output destinations and values for 
-  _(fwd, "rdest_idx") = _(out, "rdest_idx");
-  _(fwd, "rdest_valid") = _(out, "rdest_valid");
-  _(fwd, "result") = _(out, "result");
-
   #ifdef MSHR
   typedef ag<STP("valid"), node,
           ag<STP("rdest"), rname_t,
@@ -655,7 +656,8 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
 
   node mshr_full(AndN(mshr_occupied) && Lit(0)); // TODO
 
-  TAP(mshr_in); TAP(mshr_tag); TAP(mshr_occupied); TAP(mshr_full);
+  TAP(mshr_in); TAP(mshr_out); TAP(mshr_tag); TAP(mshr_occupied);
+  TAP(mshr_full); TAP(mem_resp_valid);
 
   #ifdef SST_MEM
   simpleMemReq_t sst_req;
@@ -689,14 +691,33 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
 
   #endif
 
+  // Copies of the input and output destinations and values for forwarding
+  _(fwd, "rdest_idx") = _(out, "rdest_idx");
+  _(fwd, "rdest_valid") = _(out, "rdest_valid");
+  _(fwd, "result") = _(out, "result");
+  _(fwd, "mem_rd") =
+  #ifdef INTERNAL_MEM
+    Reg(_(in, "mem_rd"));
+  #endif
+  #ifdef SST_MEM
+    Reg(mem_resp_valid);
+  #endif
+
   // The destination register signals
-  _(out, "rdest_idx") = Reg(_(in, "rdest_idx"));
+  _(out, "rdest_idx") =
+  #ifdef INTERNAL_MEM
+    Reg(_(in, "rdest_idx"));
+  #endif
+  #ifdef SST_MEM
+    Mux(Reg(mem_resp_valid), Reg(_(in, "rdest_idx")), _(mshr_out, "rdest"));
+  #endif
   _(out, "rdest_valid") = 
   #ifdef INTERNAL_MEM
     Reg(_(in, "rdest_valid"));
   #endif
   #ifdef SST_MEM
-    _(sst_resp, "valid");
+    Wreg(!_(in, "stall"), _(in, "rdest_valid") && !_(in, "mem_rd")) ||
+      Reg(mem_resp_valid);
   #endif
 
   // The final result: memory (word), memory(byte), or ALU
@@ -708,13 +729,17 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
     END().
     #endif
     #ifdef SST_MEM
-    IF(mem_resp_valid).
+    IF(Reg(mem_resp_valid)).
       IF(_(mshr_out, "byte"),
-           Zext<N>(Zext<8>(_(_(sst_resp, "contents"), "data")))).
-      ELSE(Zext<N>(_(_(sst_resp, "contents"), "data"))).
+        Zext<N>(Zext<8>(Reg(_(_(sst_resp, "contents"), "data"))))).
+        ELSE(Zext<N>(Reg(_(_(sst_resp, "contents"), "data")))).
     END().
     #endif
+    #ifdef STALL_SIGNAL
+    ELSE(Wreg(!_(in, "stall"), _(in, "result")));
+    #else
     ELSE(Reg(_(in, "result")));
+    #endif
 
   if (SOFT_IO) {
     static unsigned consoleOutVal;
@@ -751,6 +776,35 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
                   << "), " << dec << prevAddrVal << ", " << qVal << endl;
     }, Reg(_(in, "mem_rd")));
 
+    #ifdef MSHR
+    // Debugging stuff for MSHRs.
+    static bool mem_resp_valid_val, mshr_in_valid_val;
+    static unsigned mshr_occupied_val;
+    EgressInt(mshr_occupied_val, mshr_occupied);
+    Egress(mem_resp_valid_val, mem_resp_valid);
+    Egress(mshr_in_valid_val, _(mshr_in, "valid"));
+    EgressFunc([](bool x){
+	if (mshr_in_valid_val)
+          cout << "MSHR Write. Occupancy vector "
+               << hex << mshr_occupied_val << endl;
+        if (mem_resp_valid_val)
+          cout << "MSHR resp." << endl;
+    }, _(mshr_in, "valid") || mem_resp_valid);
+    #endif
+
+    #ifdef SST_MEM
+    static bool sst_resp_wr_val;
+    static unsigned sst_resp_data_val, sst_resp_tag_val;
+    Egress(sst_resp_wr_val, _(_(sst_resp, "contents"), "wr"));
+    EgressInt(sst_resp_data_val, _(_(sst_resp, "contents"), "data"));
+    EgressInt(sst_resp_tag_val, _(_(sst_resp, "contents"), "id"));
+    // Debugging stuff for SST memory
+    EgressFunc([](bool x) {
+      if (x) cout << "MSHR SST memory response, " << sst_resp_wr_val << ", "
+                  << sst_resp_tag_val << ", " << sst_resp_data_val << endl;
+    }, _(sst_resp, "valid"));
+    #endif
+
     EgressFunc([](bool x){
       if (x) cout << sim_time() << " PC> " << hex << pcVal << dec << endl;
     }, Lit(1));
@@ -766,7 +820,7 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
     mshr_full ||
     #endif
     #ifdef SST_MEM
-    sst_not_ready ||
+    sst_not_ready || _(in, "rdest_valid") && mem_resp_valid ||
     #endif
     Lit(0);
   #endif

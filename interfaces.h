@@ -7,10 +7,11 @@
 #define DELAYED_BRANCH
 #define MUL_DIV
 // #define RANDOM_STALL
-// #define SCOREBOARD
 #define SST_MEM
-//#define INTERNAL_MEM
-// #define MSHR
+// #define INTERNAL_MEM
+
+// #define SCOREBOARD // These can be enabled manually but are also enabled
+// #define MSHR       // automatically as needed.
 
 // Handle dependencies between #defines:
 #ifdef MUL_DIV
@@ -23,6 +24,10 @@
 
 #ifdef SST_MEM
 #define MSHR
+#endif
+
+#ifdef MSHR
+#define SCOREBOARD
 #endif
 
 namespace s_core {
