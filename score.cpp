@@ -10,6 +10,10 @@
 
 #include "interfaces.h"
 
+#ifdef BTB
+#include <chdl/bloom.h>
+#endif
+
 #ifdef MUL_DIV
 #include "muldiv.h"
 #endif
@@ -108,7 +112,22 @@ void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   HIERARCHY_ENTER();
   fetch_decode_t out;
 
-  word_t next_pc, pc(Reg(next_pc, initial_pc));
+  word_t pc;
+
+  #ifdef BTB
+  node clear_bf, branch;
+  branch = BloomFilter<8, 1>(
+    pc, _(in,"branch_pc"), _(in,"branch"), clear_bf
+  );
+  TAP(branch);
+  Counter("isbranch_false_negatives", _(in, "branch") && !_(in, "bp_branch"));
+  Counter("isbranch_false_positives", !_(in, "branch") && _(in, "bp_branch"));
+  Counter("isbranch_true_positives", _(in, "branch") && _(in, "bp_branch"));
+  _(out, "bp_branch") = branch;
+  #endif
+
+  word_t next_pc;
+  pc = Reg(next_pc, initial_pc);
   Cassign(next_pc).
     IF(_(in, "ldpc"), _(in, "val")).
     #ifdef STALL_SIGNAL
@@ -279,6 +298,7 @@ void decode(decode_reg_t &out, fetch_decode_t &in) {
   #ifdef BTB
   _(out, "bp_valid") = _(in, "bp_valid");
   _(out, "bp_state") = _(in, "bp_state");
+  _(out, "bp_branch") = _(in, "bp_branch");
   _(out, "bp_predict_taken") = _(in, "bp_predict_taken");
   #endif
 
@@ -340,6 +360,7 @@ void reg(reg_exec_t &out_buf, decode_reg_t &in, mem_reg_t &in_wb) {
   #ifdef BTB
   _(out, "bp_valid") = _(in, "bp_valid");
   _(out, "bp_state") = _(in, "bp_state");
+  _(out, "bp_branch") = _(in, "bp_branch");
   _(out, "bp_predict_taken") = _(in, "bp_predict_taken");
   #endif
 
@@ -464,6 +485,9 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
       (op == Lit<6>(0x01) && func == Lit<6>(0x11)) || // bgezal
       (op == Lit<6>(0x06) && func == Lit<6>(0x00)) || // blez
       (op == Lit<6>(0x07) && func == Lit<6>(0x00));   // bgtz
+
+  _(out_pc, "bp_branch") = _(in, "bp_branch");
+  _(out_pc, "branch_pc") = _(in, "pc");
 
   // The branch predictor state machine "saturating counter"
   Cassign(_(out_pc, "bp_state")).

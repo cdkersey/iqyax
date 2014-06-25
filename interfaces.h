@@ -8,8 +8,8 @@
 #define MUL_DIV
 #define BTB
 // #define RANDOM_STALL
-#define SST_MEM
-// #define INTERNAL_MEM
+// #define SST_MEM
+#define INTERNAL_MEM
 
 // #define SCOREBOARD // These can be enabled manually but are also enabled
 // #define MSHR       // automatically as needed.
@@ -55,7 +55,8 @@ namespace s_core {
           #ifdef BTB
           ,chdl::ag<STP("bp_valid"), chdl::node
           ,chdl::ag<STP("bp_state"), chdl::bvec<2>
-          ,chdl::ag<STP("bp_predict_taken"), chdl::node> > >
+          ,chdl::ag<STP("bp_branch"), chdl::node
+          ,chdl::ag<STP("bp_predict_taken"), chdl::node> > > >
           #endif
           #ifdef STALL_SIGNAL
            >
@@ -86,7 +87,8 @@ namespace s_core {
           #ifdef BTB
           ,chdl::ag<STP("bp_valid"), chdl::node
           ,chdl::ag<STP("bp_state"), chdl::bvec<2>
-          ,chdl::ag<STP("bp_predict_taken"), chdl::node> > >
+          ,chdl::ag<STP("bp_branch"), chdl::node
+          ,chdl::ag<STP("bp_predict_taken"), chdl::node> > > >
           #endif
           #ifdef STALL_SIGNAL
            >
@@ -119,7 +121,8 @@ namespace s_core {
           #ifdef BTB
           ,chdl::ag<STP("bp_valid"), chdl::node
           ,chdl::ag<STP("bp_state"), chdl::bvec<2>
-          ,chdl::ag<STP("bp_predict_taken"), chdl::node> > >
+          ,chdl::ag<STP("bp_branch"), chdl::node
+          ,chdl::ag<STP("bp_predict_taken"), chdl::node> > > >
           #endif
           #ifdef STALL_SIGNAL
            >
@@ -131,7 +134,9 @@ namespace s_core {
           chdl::ag<STP("val"), word_t
           #ifdef BTB
           ,chdl::ag<STP("bp_state"), chdl::bvec<2>
-          ,chdl::ag<STP("branch"), chdl::node > >
+          ,chdl::ag<STP("bp_branch"), chdl::node
+          ,chdl::ag<STP("branch"), chdl::node
+          ,chdl::ag<STP("branch_pc"), word_t> > > >
           #endif
   > > exec_fetch_t;
 
