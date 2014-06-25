@@ -654,7 +654,7 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
   mshr_out = Syncmem(mem_resp_tag,
                      Flatten(mshr_in), mshr_tag, _(mshr_in, "valid"));
 
-  node mshr_full(AndN(mshr_occupied) && Lit(0)); // TODO
+  node mshr_full(AndN(mshr_occupied));
 
   TAP(mshr_in); TAP(mshr_out); TAP(mshr_tag); TAP(mshr_occupied);
   TAP(mshr_full); TAP(mem_resp_valid);
