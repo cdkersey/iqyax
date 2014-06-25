@@ -84,6 +84,24 @@ int main(int argc, char** argv) {
   return 0;
 }
 
+#ifdef BTB
+template <unsigned M, unsigned N> bvec<M> Fold(bvec<N> in) {
+  HIERARCHY_ENTER();
+  vec<M, bvec<N/M> > x;
+  for (unsigned i = 0; i < N; i += M)
+    for (unsigned j = 0; j < M; ++j)
+      x[j][i/M] = in[i + j];
+
+  bvec<M> r;
+  for (unsigned i = 0; i < M; ++i)
+    r[i] = XorN(x[i]);
+
+  HIERARCHY_EXIT();
+
+  return r;
+}
+#endif
+
 void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
            const char *hex_file, unsigned initial_pc)
 {
@@ -93,9 +111,9 @@ void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   word_t next_pc, pc(Reg(next_pc, initial_pc));
   Cassign(next_pc).
     IF(_(in, "ldpc"), _(in, "val")).
-#ifdef STALL_SIGNAL
+    #ifdef STALL_SIGNAL
     IF(_(out_buf, "stall"), pc).
-#endif
+    #endif
     ELSE(pc + LitW(4));
 
   _(out, "inst") =
@@ -105,12 +123,12 @@ void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
 
   _(out, "valid") = Lit(1);
 
-#ifdef STALL_SIGNAL
+  #ifdef STALL_SIGNAL
   out_buf = Wreg(!_(out_buf, "stall"), Flatten(out));
   _(out_buf, "valid") = Reg(_(out, "valid")) && !_(out_buf, "stall");
-#else
+  #else
   out_buf = Reg(Flatten(out));
-#endif
+  #endif
   HIERARCHY_EXIT();
 }
 
@@ -242,7 +260,7 @@ void decode(decode_reg_t &out, fetch_decode_t &in) {
       opcode == Lit<6>(0x20) || // lb
       opcode == Lit<6>(0x23) ); // lw
 
-  _(out, "mem_wr") =
+   _(out, "mem_wr") =
     _(in, "valid") && (
       opcode == Lit<6>(0x28) || // sb
       opcode == Lit<6>(0x2b) ); // sw
@@ -257,6 +275,12 @@ void decode(decode_reg_t &out, fetch_decode_t &in) {
   _(out, "pc") = _(in, "pc");
   _(out, "next_pc") = _(in, "next_pc");
   _(out, "valid") = _(in, "valid");
+
+  #ifdef BTB
+  _(out, "bp_valid") = _(in, "bp_valid");
+  _(out, "bp_state") = _(in, "bp_state");
+  _(out, "bp_predict_taken") = _(in, "bp_predict_taken");
+  #endif
 
   #ifdef STALL_SIGNAL
   _(in, "stall") = _(out, "stall");
@@ -311,6 +335,12 @@ void reg(reg_exec_t &out_buf, decode_reg_t &in, mem_reg_t &in_wb) {
   _(out_buf, "valid") = Wreg(!_(in, "stall"), _(out, "valid")) && !_(in, "stall");
   #else
   out_buf = Reg(Flatten(out));
+  #endif
+
+  #ifdef BTB
+  _(out, "bp_valid") = _(in, "bp_valid");
+  _(out, "bp_state") = _(in, "bp_state");
+  _(out, "bp_predict_taken") = _(in, "bp_predict_taken");
   #endif
 
   HIERARCHY_EXIT();
@@ -422,6 +452,41 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   node branch_mispredict(in_valid && next_pc != actual_next_pc);
   _(out_pc, "ldpc") = branch_mispredict;
   _(out_pc, "val") = actual_next_pc;
+
+  #ifdef BTB
+    // Identify this instruction as a branch for the branch predictor
+    _(out_pc, "branch") =
+      (op == Lit<6>(0x02) || op == Lit<6>(0x03)) ||   // j, jal
+      (op == Lit<6>(0x00) && func == Lit<6>(0x08)) || // jr
+      (op == Lit<6>(0x04) || op == Lit<6>(0x05)) ||   // beq, bne
+      (op == Lit<6>(0x01) && func == Lit<6>(0x01)) || // bgez
+      (op == Lit<6>(0x01) && func == Lit<6>(0x10)) || // bltzal
+      (op == Lit<6>(0x01) && func == Lit<6>(0x11)) || // bgezal
+      (op == Lit<6>(0x06) && func == Lit<6>(0x00)) || // blez
+      (op == Lit<6>(0x07) && func == Lit<6>(0x00));   // bgtz
+
+  // The branch predictor state machine "saturating counter"
+  Cassign(_(out_pc, "bp_state")).
+    IF(_(in, "bp_valid")).
+      IF(_(in, "bp_state") == Lit<2>(0)).
+        IF(branch_mispredict, Lit<2>(1)). 
+        ELSE(Lit<2>(0)).
+      END().
+      IF(_(in, "bp_state") == Lit<2>(1)).
+        IF(branch_mispredict, Lit<2>(2)). 
+        ELSE(Lit<2>(0)).
+      END().
+      IF(_(in, "bp_state") == Lit<2>(2)).
+        IF(branch_mispredict, Lit<2>(1)). 
+        ELSE(Lit<2>(3)).
+      END().
+      IF(_(in, "bp_state") == Lit<2>(3)).
+        IF(branch_mispredict, Lit<2>(2)). 
+        ELSE(Lit<2>(3)).
+      END().
+    END().
+    ELSE(Lit<2>(1));
+  #endif
 
   Cassign(next_bubble_ctr).
   #ifdef STALL_SIGNAL

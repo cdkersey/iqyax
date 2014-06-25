@@ -6,6 +6,7 @@
 
 #define DELAYED_BRANCH
 #define MUL_DIV
+#define BTB
 // #define RANDOM_STALL
 #define SST_MEM
 // #define INTERNAL_MEM
@@ -49,7 +50,15 @@ namespace s_core {
           chdl::ag<STP("next_pc"), word_t,
           chdl::ag<STP("pc"), word_t
           #ifdef STALL_SIGNAL
-           ,chdl::ag<STP("stall"), chdl::node>
+          ,chdl::ag<STP("stall"), chdl::node
+          #endif
+          #ifdef BTB
+          ,chdl::ag<STP("bp_valid"), chdl::node
+          ,chdl::ag<STP("bp_state"), chdl::bvec<2>
+          ,chdl::ag<STP("bp_predict_taken"), chdl::node> > >
+          #endif
+          #ifdef STALL_SIGNAL
+           >
           #endif
   > > > > fetch_decode_t;
 
@@ -72,7 +81,15 @@ namespace s_core {
           chdl::ag<STP("next_pc"), word_t,
           chdl::ag<STP("pc"), word_t
           #ifdef STALL_SIGNAL
-           ,chdl::ag<STP("stall"), chdl::node>
+          ,chdl::ag<STP("stall"), chdl::node
+          #endif
+          #ifdef BTB
+          ,chdl::ag<STP("bp_valid"), chdl::node
+          ,chdl::ag<STP("bp_state"), chdl::bvec<2>
+          ,chdl::ag<STP("bp_predict_taken"), chdl::node> > >
+          #endif
+          #ifdef STALL_SIGNAL
+           >
           #endif
   > > > > > > > > > > > > > > > > > decode_reg_t;
 
@@ -97,13 +114,25 @@ namespace s_core {
           chdl::ag<STP("next_pc"), word_t,
           chdl::ag<STP("pc"), word_t
           #ifdef STALL_SIGNAL
-           ,chdl::ag<STP("stall"), chdl::node>
+          ,chdl::ag<STP("stall"), chdl::node
+          #endif
+          #ifdef BTB
+          ,chdl::ag<STP("bp_valid"), chdl::node
+          ,chdl::ag<STP("bp_state"), chdl::bvec<2>
+          ,chdl::ag<STP("bp_predict_taken"), chdl::node> > >
+          #endif
+          #ifdef STALL_SIGNAL
+           >
           #endif
   > > > > > > > > > > > > > > > > > > > reg_exec_t;
 
   // Signals from execute to fetch stage (branch mispredict)
   typedef chdl::ag<STP("ldpc"), chdl::node,
           chdl::ag<STP("val"), word_t
+          #ifdef BTB
+          ,chdl::ag<STP("bp_state"), chdl::bvec<2>
+          ,chdl::ag<STP("branch"), chdl::node > >
+          #endif
   > > exec_fetch_t;
 
   // Signals from execute to memory stage
