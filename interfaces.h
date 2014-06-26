@@ -36,6 +36,10 @@ namespace s_core {
   const unsigned N(32), IROM_SZ(10), RAM_SZ(20), MSHR_SZ(8);
   const chdl::cycle_t TMAX(100000);
 
+  #ifdef BTB
+  const unsigned BTB_SZ(7);
+  #endif
+
   typedef chdl::bvec<5> rname_t;
   typedef chdl::bvec<6> opcode_t;
   typedef chdl::bvec<6> func_t;

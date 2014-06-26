@@ -124,6 +124,22 @@ void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   Counter("isbranch_false_positives", !_(in, "branch") && _(in, "bp_branch"));
   Counter("isbranch_true_positives", _(in, "branch") && _(in, "bp_branch"));
   _(out, "bp_branch") = branch;
+
+  typedef ag<STP("valid"), node,
+          ag<STP("next_pc"), bvec<N>,
+          ag<STP("state"), bvec<2> > > > btb_t;
+
+  node btb_wr(_(in, "branch"));
+  bvec<BTB_SZ> btb_rd_idx(Hash<BTB_SZ>(pc, 0)),
+               btb_wr_idx(Hash<BTB_SZ>(_(in, "branch_pc"), 0));
+  btb_t btb_in,
+        btb_out(Syncmem(btb_rd_idx, Flatten(btb_in), btb_wr_idx, btb_wr));
+
+  _(btb_in, "valid") = Lit(1);
+  _(btb_in, "next_pc") = _(in, "val");
+  _(btb_in, "state") = _(in, "bp_state");
+
+  TAP(btb_in); TAP(btb_out);
   #endif
 
   word_t next_pc;
@@ -148,6 +164,14 @@ void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   #else
   out_buf = Reg(Flatten(out));
   #endif
+
+  #ifdef BTB
+  _(out_buf, "bp_valid") = Reg(branch) && _(btb_out, "valid");
+  _(out_buf, "bp_state") = _(btb_out, "state");
+  _(out_buf, "bp_branch") = Reg(branch);
+  _(out_buf, "bp_predict_taken") = _(btb_out, "state")[1];
+  #endif
+
   HIERARCHY_EXIT();
 }
 
@@ -352,7 +376,7 @@ void reg(reg_exec_t &out_buf, decode_reg_t &in, mem_reg_t &in_wb) {
   #ifdef STALL_SIGNAL
   _(in, "stall") = _(out_buf, "stall");
   out_buf = Wreg(!_(out_buf, "stall"), Flatten(out));
-  _(out_buf, "valid") = Wreg(!_(in, "stall"), _(out, "valid")) && !_(in, "stall");
+  _(out_buf, "valid") = Wreg(!_(in,"stall"), _(out,"valid")) && !_(in,"stall");
   #else
   out_buf = Reg(Flatten(out));
   #endif
@@ -470,7 +494,10 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   #endif
   in_valid = _(in, "valid") && !bubble;
 
-  node branch_mispredict(in_valid && next_pc != actual_next_pc);
+  node branch_mispredict(in_valid && next_pc != actual_next_pc),
+       branch_taken(in_valid && (_(in, "pc") + Lit<N>(4)) != actual_next_pc);
+  TAP(branch_mispredict);
+  TAP(branch_taken);
   _(out_pc, "ldpc") = branch_mispredict;
   _(out_pc, "val") = actual_next_pc;
 
@@ -493,19 +520,19 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   Cassign(_(out_pc, "bp_state")).
     IF(_(in, "bp_valid")).
       IF(_(in, "bp_state") == Lit<2>(0)).
-        IF(branch_mispredict, Lit<2>(1)). 
+        IF(branch_taken, Lit<2>(1)). 
         ELSE(Lit<2>(0)).
       END().
       IF(_(in, "bp_state") == Lit<2>(1)).
-        IF(branch_mispredict, Lit<2>(2)). 
+        IF(branch_taken, Lit<2>(2)). 
         ELSE(Lit<2>(0)).
       END().
       IF(_(in, "bp_state") == Lit<2>(2)).
-        IF(branch_mispredict, Lit<2>(1)). 
+        IF(branch_taken, Lit<2>(1)). 
         ELSE(Lit<2>(3)).
       END().
       IF(_(in, "bp_state") == Lit<2>(3)).
-        IF(branch_mispredict, Lit<2>(2)). 
+        IF(branch_taken, Lit<2>(2)). 
         ELSE(Lit<2>(3)).
       END().
     END().
