@@ -8,8 +8,8 @@
 #define MUL_DIV
 #define BTB
 // #define RANDOM_STALL
-// #define SST_MEM
-#define INTERNAL_MEM
+#define SST_MEM
+// #define INTERNAL_MEM
 
 // #define SCOREBOARD // These can be enabled manually but are also enabled
 // #define MSHR       // automatically as needed.
