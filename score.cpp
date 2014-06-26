@@ -122,7 +122,7 @@ void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   node clear_bf, branch, stall(Lit(0)),
        isBranchFalsePositive(!_(in, "branch") && _(in, "bp_branch"));
   branch = BloomFilter<8, 1>(
-   pc, _(in,"branch_pc"), _(in,"branch"), clear_bf
+    pc, _(in,"branch_pc"), _(in,"branch"), clear_bf
   );
   TAP(branch);
 
@@ -142,7 +142,7 @@ void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   Counter("isbranch_false_positives", isBranchFalsePositive);
   Counter("isbranch_true_positives",
             _(in, "branch") && _(in, "bp_branch"));
-  _(out, "bp_branch") = branch;
+  _(out, "bp_branch") = Latch(Reg(stall), branch);
 
   typedef ag<STP("valid"), node,
           ag<STP("next_pc"), bvec<N>,
@@ -152,7 +152,8 @@ void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   bvec<BTB_SZ> btb_rd_idx(Hash<BTB_SZ>(pc, 0)),
                btb_wr_idx(Hash<BTB_SZ>(_(in, "branch_pc"), 0));
   btb_t btb_in,
-        btb_out(Syncmem(btb_rd_idx, Flatten(btb_in), btb_wr_idx, btb_wr));
+        btb_out_pl(Syncmem(btb_rd_idx, Flatten(btb_in), btb_wr_idx, btb_wr)),
+        btb_out(Latch(Reg(stall), Flatten(btb_out_pl)));
 
   _(btb_in, "valid") = Lit(1);
   _(btb_in, "next_pc") = _(in, "val");
