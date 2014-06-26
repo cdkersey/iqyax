@@ -60,7 +60,8 @@ namespace s_core {
           ,chdl::ag<STP("bp_valid"), chdl::node
           ,chdl::ag<STP("bp_state"), chdl::bvec<2>
           ,chdl::ag<STP("bp_branch"), chdl::node
-          ,chdl::ag<STP("bp_predict_taken"), chdl::node> > > >
+          ,chdl::ag<STP("bp_pc"), word_t
+          ,chdl::ag<STP("bp_predict_taken"), chdl::node> > > > >
           #endif
           #ifdef STALL_SIGNAL
            >
@@ -92,7 +93,8 @@ namespace s_core {
           ,chdl::ag<STP("bp_valid"), chdl::node
           ,chdl::ag<STP("bp_state"), chdl::bvec<2>
           ,chdl::ag<STP("bp_branch"), chdl::node
-          ,chdl::ag<STP("bp_predict_taken"), chdl::node> > > >
+          ,chdl::ag<STP("bp_pc"), word_t
+          ,chdl::ag<STP("bp_predict_taken"), chdl::node> > > > >
           #endif
           #ifdef STALL_SIGNAL
            >
@@ -126,7 +128,8 @@ namespace s_core {
           ,chdl::ag<STP("bp_valid"), chdl::node
           ,chdl::ag<STP("bp_state"), chdl::bvec<2>
           ,chdl::ag<STP("bp_branch"), chdl::node
-          ,chdl::ag<STP("bp_predict_taken"), chdl::node> > > >
+          ,chdl::ag<STP("bp_pc"), word_t
+          ,chdl::ag<STP("bp_predict_taken"), chdl::node> > > > >
           #endif
           #ifdef STALL_SIGNAL
            >

@@ -170,6 +170,7 @@ void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   _(out_buf, "bp_state") = _(btb_out, "state");
   _(out_buf, "bp_branch") = Reg(branch);
   _(out_buf, "bp_predict_taken") = _(btb_out, "state")[1];
+  _(out_buf, "bp_pc") = _(btb_out, "next_pc");
   #endif
 
   HIERARCHY_EXIT();
@@ -324,6 +325,7 @@ void decode(decode_reg_t &out, fetch_decode_t &in) {
   _(out, "bp_state") = _(in, "bp_state");
   _(out, "bp_branch") = _(in, "bp_branch");
   _(out, "bp_predict_taken") = _(in, "bp_predict_taken");
+  _(out, "bp_pc") = _(in, "bp_pc");
   #endif
 
   #ifdef STALL_SIGNAL
@@ -386,6 +388,7 @@ void reg(reg_exec_t &out_buf, decode_reg_t &in, mem_reg_t &in_wb) {
   _(out, "bp_state") = _(in, "bp_state");
   _(out, "bp_branch") = _(in, "bp_branch");
   _(out, "bp_predict_taken") = _(in, "bp_predict_taken");
+  _(out, "bp_pc") = _(in, "bp_pc");
   #endif
 
   HIERARCHY_EXIT();
@@ -495,7 +498,7 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   in_valid = _(in, "valid") && !bubble;
 
   node branch_mispredict(in_valid && next_pc != actual_next_pc),
-       branch_taken(in_valid && (_(in, "pc") + Lit<N>(4)) != actual_next_pc);
+       branch_taken(in_valid && (_(in, "pc")+Lit<N>(4)) != actual_next_pc);
   TAP(branch_mispredict);
   TAP(branch_taken);
   _(out_pc, "ldpc") = branch_mispredict;
@@ -537,6 +540,14 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
       END().
     END().
     ELSE(Lit<2>(1));
+
+  // TODO: rename the original branch_mispredict
+  node bp_mispredict_t(_(in, "bp_valid") && _(in, "bp_predict_taken") && !branch_taken),
+       bp_mispredict_nt(_(in, "bp_valid") && !_(in,"bp_predict_taken") && branch_taken);
+
+  Counter("mispredict_t", bp_mispredict_t);
+  Counter("mispredict_nt", bp_mispredict_nt);
+  Counter("branches", _(out_pc, "branch")); 
   #endif
 
   Cassign(next_bubble_ctr).
