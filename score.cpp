@@ -10,6 +10,10 @@
 
 #include "interfaces.h"
 
+#ifdef RANDOM_STALL
+#include <chdl/lfsr.h>
+#endif
+
 #ifdef BTB
 #include <chdl/bloom.h>
 #endif
@@ -115,14 +119,29 @@ void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   word_t pc;
 
   #ifdef BTB
-  node clear_bf, branch;
+  node clear_bf, branch, stall(Lit(0)),
+       isBranchFalsePositive(!_(in, "branch") && _(in, "bp_branch"));
   branch = BloomFilter<8, 1>(
-    pc, _(in,"branch_pc"), _(in,"branch"), clear_bf
+   pc, _(in,"branch_pc"), _(in,"branch"), clear_bf
   );
   TAP(branch);
-  Counter("isbranch_false_negatives", _(in, "branch") && !_(in, "bp_branch"));
-  Counter("isbranch_false_positives", !_(in, "branch") && _(in, "bp_branch"));
-  Counter("isbranch_true_positives", _(in, "branch") && _(in, "bp_branch"));
+
+  #ifdef STALL_SIGNAL
+  stall = _(out_buf, "stall");
+  #endif
+
+  // Clear bloom filter every 7 false positives
+  bvec<3> isBranchFalsePositiveCount;
+  isBranchFalsePositiveCount =
+    Wreg(isBranchFalsePositive || isBranchFalsePositiveCount == Lit<3>(7),
+           isBranchFalsePositiveCount + Lit<3>(1));
+  clear_bf = AndN(isBranchFalsePositiveCount);
+
+  Counter("isbranch_false_negatives",
+            _(in, "branch") && !_(in, "bp_branch"));
+  Counter("isbranch_false_positives", isBranchFalsePositive);
+  Counter("isbranch_true_positives",
+            _(in, "branch") && _(in, "bp_branch"));
   _(out, "bp_branch") = branch;
 
   typedef ag<STP("valid"), node,
@@ -139,7 +158,7 @@ void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   _(btb_in, "next_pc") = _(in, "val");
   _(btb_in, "state") = _(in, "bp_state");
 
-  TAP(btb_in); TAP(btb_out);
+  TAP(btb_in); TAP(btb_out); TAP(pc); TAP(clear_bf);
   #endif
 
   word_t next_pc;
@@ -166,9 +185,8 @@ void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   #endif
 
   #ifdef BTB
-  _(out_buf, "bp_valid") = Reg(branch) && _(btb_out, "valid");
+  _(out_buf, "bp_valid") = _(out_buf, "bp_branch") && _(btb_out, "valid");
   _(out_buf, "bp_state") = _(btb_out, "state");
-  _(out_buf, "bp_branch") = Reg(branch);
   _(out_buf, "bp_predict_taken") = _(btb_out, "state")[1];
   _(out_buf, "bp_pc") = _(btb_out, "next_pc");
   #endif
@@ -404,11 +422,8 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
 
   #ifdef RANDOM_STALL
   // Test stall signal by generating random stalls.
-  unsigned stall_seed(0x1234);
-  bvec<15> stall_lfsr;
-  for (unsigned i = 1; i < 15; ++i) stall_lfsr[i] = Reg(stall_lfsr[i-1], (stall_seed>>i)&1);
-  stall_lfsr[0] = Reg(Xor(stall_lfsr[14], stall_lfsr[0]));
-  node random_stall = stall_lfsr[14] || _(out_buf, "stall");
+  node random_stall = Lfsr<1, 15, 1, 0x1234>()[0] || _(out_buf, "stall");
+  TAP(random_stall);
   #endif
 
   opcode_t op(_(in, "op"));
@@ -507,16 +522,25 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   #ifdef BTB
     // Identify this instruction as a branch for the branch predictor
     _(out_pc, "branch") =
-      (op == Lit<6>(0x02) || op == Lit<6>(0x03)) ||   // j, jal
-      (op == Lit<6>(0x00) && func == Lit<6>(0x08)) || // jr
-      (op == Lit<6>(0x04) || op == Lit<6>(0x05)) ||   // beq, bne
-      (op == Lit<6>(0x01) && func == Lit<6>(0x01)) || // bgez
-      (op == Lit<6>(0x01) && func == Lit<6>(0x10)) || // bltzal
-      (op == Lit<6>(0x01) && func == Lit<6>(0x11)) || // bgezal
-      (op == Lit<6>(0x06) && func == Lit<6>(0x00)) || // blez
-      (op == Lit<6>(0x07) && func == Lit<6>(0x00));   // bgtz
+      #ifdef STALL_SIGNAL
+      !stall &&
+      #endif
+      !bubble &&
+      ((op == Lit<6>(0x02) || op == Lit<6>(0x03)) ||    // j, jal
+       (op == Lit<6>(0x00) && func == Lit<6>(0x08)) ||  // jr
+       (op == Lit<6>(0x04) || op == Lit<6>(0x05)) ||    // beq, bne
+       (op == Lit<6>(0x01) && func == Lit<6>(0x01)) ||  // bgez
+       (op == Lit<6>(0x01) && func == Lit<6>(0x10)) ||  // bltzal
+       (op == Lit<6>(0x01) && func == Lit<6>(0x11)) ||  // bgezal
+       (op == Lit<6>(0x06) && func == Lit<6>(0x00)) ||  // blez
+       (op == Lit<6>(0x07) && func == Lit<6>(0x00)));   // bgtz
 
-  _(out_pc, "bp_branch") = _(in, "bp_branch");
+  _(out_pc, "bp_branch") = 
+    !bubble &&
+    #ifdef STALL_SIGNAL
+    !stall &&
+    #endif
+    _(in, "bp_branch");
   _(out_pc, "branch_pc") = _(in, "pc");
 
   // The branch predictor state machine "saturating counter"
@@ -531,19 +555,29 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
         ELSE(Lit<2>(0)).
       END().
       IF(_(in, "bp_state") == Lit<2>(2)).
-        IF(branch_taken, Lit<2>(1)). 
-        ELSE(Lit<2>(3)).
+        IF(branch_taken, Lit<2>(3)). 
+        ELSE(Lit<2>(1)).
       END().
       IF(_(in, "bp_state") == Lit<2>(3)).
-        IF(branch_taken, Lit<2>(2)). 
-        ELSE(Lit<2>(3)).
+        IF(branch_taken, Lit<2>(3)). 
+        ELSE(Lit<2>(2)).
       END().
     END().
     ELSE(Lit<2>(1));
 
   // TODO: rename the original branch_mispredict
-  node bp_mispredict_t(_(in, "bp_valid") && _(in, "bp_predict_taken") && !branch_taken),
-       bp_mispredict_nt(_(in, "bp_valid") && !_(in,"bp_predict_taken") && branch_taken);
+  node bp_mispredict_t(_(in, "bp_valid") && _(in, "bp_predict_taken")
+         && !branch_taken && in_valid
+         #ifdef STALL_SIGNAL
+         && !stall
+         #endif
+       ),
+       bp_mispredict_nt(_(in, "bp_valid") && !_(in,"bp_predict_taken")
+         && branch_taken && in_valid
+         #ifdef STALL_SIGNAL
+         && !stall
+         #endif
+       );
 
   Counter("mispredict_t", bp_mispredict_t);
   Counter("mispredict_nt", bp_mispredict_nt);
