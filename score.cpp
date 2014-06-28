@@ -834,7 +834,11 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
           ag<STP("bytesel"), bvec<BB> > > > > mshr_entry_t;
 
   mshr_entry_t mshr_in, mshr_out;
-  _(mshr_in, "valid") = _(in, "mem_rd");
+  _(mshr_in, "valid") = _(in, "mem_rd")
+  #ifdef STALL_SIGNAL
+    && !_(in, "stall")
+  #endif
+  ;
   _(mshr_in, "rdest") = _(in, "rdest_idx");
   _(mshr_in, "byte") = _(in, "mem_byte");
   _(mshr_in, "bytesel") = bytesel;
