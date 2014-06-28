@@ -169,6 +169,10 @@ void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
     #ifdef STALL_SIGNAL
     IF(_(out_buf, "stall"), pc).
     #endif
+    #ifdef BTB
+    IF(_(out_buf, "bp_valid") && _(out_buf, "bp_predict_taken"),
+      _(out_buf, "bp_pc")).
+    #endif
     ELSE(pc + LitW(4));
 
   _(out, "inst") =
@@ -186,7 +190,8 @@ void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   #endif
 
   #ifdef BTB
-  _(out_buf, "bp_valid") = _(out_buf, "bp_branch") && _(btb_out, "valid");
+  _(out_buf, "bp_valid") = _(out_buf, "bp_branch") && _(btb_out, "valid") &&
+                           !Wreg(!stall, _(in, "ldpc"));
   _(out_buf, "bp_state") = _(btb_out, "state");
   _(out_buf, "bp_predict_taken") = _(btb_out, "state")[1];
   _(out_buf, "bp_pc") = _(btb_out, "next_pc");
@@ -517,8 +522,6 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
        branch_taken(in_valid && (_(in, "pc")+Lit<N>(4)) != actual_next_pc);
   TAP(branch_mispredict);
   TAP(branch_taken);
-  _(out_pc, "ldpc") = branch_mispredict;
-  _(out_pc, "val") = actual_next_pc;
 
   #ifdef BTB
     // Identify this instruction as a branch for the branch predictor
@@ -567,7 +570,8 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
     ELSE(Lit<2>(1));
 
   // TODO: rename the original branch_mispredict
-  node bp_mispredict_t(_(in, "bp_valid") && _(in, "bp_predict_taken")
+  node bp_failure_to_predict(!_(in, "bp_valid") && branch_taken),
+       bp_mispredict_t(_(in, "bp_valid") && _(in, "bp_predict_taken")
          && !branch_taken && in_valid
          #ifdef STALL_SIGNAL
          && !stall
@@ -578,18 +582,39 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
          #ifdef STALL_SIGNAL
          && !stall
          #endif
+       ),
+       bp_wrong_target(_(in, "bp_valid") && actual_next_pc != _(in, "bp_pc") &&
+                         !bp_mispredict_t && !bp_mispredict_nt && in_valid
+         #ifdef STALL_SIGNAL
+         && !stall
+         #endif
        );
 
+  Counter("failure_to_predict", bp_failure_to_predict);
   Counter("mispredict_t", bp_mispredict_t);
   Counter("mispredict_nt", bp_mispredict_nt);
+  Counter("bp_wrong_target", bp_wrong_target);
   Counter("branches", _(out_pc, "branch")); 
   #endif
+
+  Counter("instructions", in_valid
+  #ifdef STALL_SIGNAL
+    && !_(in, "stall")
+  #endif
+  );
 
   Cassign(next_bubble_ctr).
   #ifdef STALL_SIGNAL
     IF(_(in, "stall"), bubble_ctr).
   #endif
+  #ifdef BTB
+    IF(bubble_ctr == Lit<2>(0) &&
+        (bp_mispredict_t || bp_mispredict_nt || bp_failure_to_predict
+          || bp_wrong_target),
+          Lit<2>(2)).
+  #else
     IF(branch_mispredict, Lit<2>(2)).
+  #endif
     IF(bubble_ctr == Lit<2>(0), Lit<2>(0)).
     ELSE(bubble_ctr - Lit<2>(1));    
 
@@ -603,6 +628,17 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
 
   _(out, "rdest_idx") = _(in, "rdest_idx");
   _(out, "rdest_valid") = _(in, "rdest_valid") && in_valid;
+
+  
+  #ifdef BTB
+  _(out_pc, "ldpc") = bp_mispredict_t || bp_mispredict_nt ||
+                      bp_failure_to_predict || bp_wrong_target;
+  _(out_pc, "val") = Mux(bp_mispredict_t, actual_next_pc,
+                                          _(in, "pc") + LitW(8));
+  #else
+  _(out_pc, "ldpc") = branch_mispredict;
+  _(out_pc, "val") = actual_next_pc;
+  #endif
 
   #ifdef MUL_DIV
   word_t hi, lo;
@@ -813,10 +849,11 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
       ELSE(mshr_occupied[i]);
   }
 
-  mshr_out = Syncmem(mem_resp_tag,
-                     Flatten(mshr_in), mshr_tag, _(mshr_in, "valid"));
-
   node mshr_full(AndN(mshr_occupied));
+
+  mshr_out = Syncmem(mem_resp_tag,
+                     Flatten(mshr_in), mshr_tag,
+                     _(mshr_in, "valid") && !mshr_full);
 
   TAP(mshr_in); TAP(mshr_out); TAP(mshr_tag); TAP(mshr_occupied);
   TAP(mshr_full); TAP(mem_resp_valid);

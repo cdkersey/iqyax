@@ -156,6 +156,7 @@ void chdl_sst_sim_run(bool &stop, cycle_t c) {
 
     print_time(vcd);
   }
+  call_final_funcs();
 }
 
 void chdl_sst_sim_run(cycle_t c) { bool x(false); chdl_sst_sim_run(x, c); }
