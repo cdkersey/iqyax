@@ -584,7 +584,8 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
          #endif
        ),
        bp_wrong_target(_(in, "bp_valid") && actual_next_pc != _(in, "bp_pc") &&
-                         !bp_mispredict_t && !bp_mispredict_nt && in_valid
+                         !bp_mispredict_t && !bp_mispredict_nt && in_valid &&
+                         _(in, "bp_branch") && _(out_pc, "branch")
          #ifdef STALL_SIGNAL
          && !stall
          #endif
@@ -597,7 +598,7 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   Counter("branches", _(out_pc, "branch")); 
   #endif
 
-  Counter("instructions", in_valid
+  Counter("instructions", in_valid && !bubble
   #ifdef STALL_SIGNAL
     && !_(in, "stall")
   #endif
@@ -609,8 +610,8 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   #endif
   #ifdef BTB
     IF(bubble_ctr == Lit<2>(0) &&
-        (bp_mispredict_t || bp_mispredict_nt || bp_failure_to_predict
-          || bp_wrong_target),
+        (bp_mispredict_t || bp_mispredict_nt || bp_wrong_target ||
+           bp_failure_to_predict),
           Lit<2>(2)).
   #else
     IF(branch_mispredict, Lit<2>(2)).
