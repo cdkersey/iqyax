@@ -598,6 +598,7 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   Counter("branches", _(out_pc, "branch")); 
   #endif
 
+  Counter("cycles", Lit(1));
   Counter("instructions", in_valid && !bubble
   #ifdef STALL_SIGNAL
     && !_(in, "stall")
