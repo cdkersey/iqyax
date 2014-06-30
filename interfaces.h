@@ -6,7 +6,7 @@
 
 #define DELAYED_BRANCH
 #define MUL_DIV
-// #define BTB
+#define BTB
 // #define RANDOM_STALL
 #define SST_MEM
 // #define INTERNAL_MEM
