@@ -950,11 +950,24 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
     static unsigned consoleOutVal;
     EgressInt(consoleOutVal, _(in, "result"));
     node wrConsole(_(in, "mem_wr") && _(in, "addr") == Lit<N>(1ul<<(N-1))),
+      wrChar(_(in, "mem_wr") && _(in, "addr") == Lit<N>((1ul<<N-1)+N/4)),
          stopSimNode(_(in, "mem_wr") && _(in, "addr")==Lit<N>((1ul<<N-1)+N/8));
 
     EgressFunc([](bool x){
       if (x) cout << "OUTPUT> " << consoleOutVal << endl;
     }, wrConsole);
+
+    EgressFunc([](bool x){
+        static string linebuf;
+        if (x) {
+          if (consoleOutVal == '\n') {
+            cout << "OUTPUT> " << linebuf << endl;
+            linebuf = "";
+          } else {
+            linebuf = linebuf + char(consoleOutVal);
+          }
+	}
+    }, wrChar);
 
     Egress(stop_sim, stopSimNode);
   }

@@ -6,5 +6,5 @@
   for x in ../mips_benchmarks/*.s; do
     echo $x;
     ./score `echo $x | sed 's/\.s/.hex/'` \
-            `grep start $x | sed 's/ .*//'` | grep OUTPUT;
-  done | tee OUTPUT
+            `grep start $x | sed 's/ .*//'`
+  done | tee OUTPUT | grep OUTPUT
