@@ -589,7 +589,8 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
        ),
        bp_wrong_target(_(in, "bp_valid") && actual_next_pc != _(in, "bp_pc") &&
                          !bp_mispredict_t && !bp_mispredict_nt && in_valid &&
-                         _(in, "bp_branch") && _(out_pc, "branch")
+		       _(in, "bp_branch") && _(out_pc, "branch") &&
+                       _(in, "bp_predict_taken")
          #ifdef STALL_SIGNAL
          && !stall
          #endif
@@ -640,7 +641,7 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   _(out_pc, "ldpc") = bp_mispredict_t || bp_mispredict_nt ||
                       bp_failure_to_predict || bp_wrong_target;
   Cassign(_(out_pc, "val")).
-    IF(bp_mispredict_t || bp_wrong_target, _(in, "pc") + LitW(8)).
+    IF(bp_mispredict_t, _(in, "pc") + LitW(8)).
     ELSE(actual_next_pc);
   #else
   _(out_pc, "ldpc") = branch_mispredict;
