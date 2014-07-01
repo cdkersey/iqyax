@@ -639,8 +639,9 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   #ifdef BTB
   _(out_pc, "ldpc") = bp_mispredict_t || bp_mispredict_nt ||
                       bp_failure_to_predict || bp_wrong_target;
-  _(out_pc, "val") = Mux(bp_mispredict_t, actual_next_pc,
-                                          _(in, "pc") + LitW(8));
+  Cassign(_(out_pc, "val")).
+    IF(bp_mispredict_t || bp_wrong_target, _(in, "pc") + LitW(8)).
+    ELSE(actual_next_pc);
   #else
   _(out_pc, "ldpc") = branch_mispredict;
   _(out_pc, "val") = actual_next_pc;
