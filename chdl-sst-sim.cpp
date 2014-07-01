@@ -7,6 +7,8 @@
 #include <chdl/ingress.h>
 #include <chdl/egress.h>
 
+unsigned MAX_LATENCY(2);
+
 using namespace std;
 using namespace chdl;
 
@@ -94,7 +96,7 @@ void processReq(cycle_t now, memUnit_t *m) {
     if (m->req.wr) cout << ", " << (m->req.data);
     cout << endl;
 
-    cycle_t respTime(now + (rand()&0x1f));
+    cycle_t respTime(now + (rand()%MAX_LATENCY));
     while (eq.find(respTime) != eq.end()) ++respTime;
     cout << "  resp scheduled for " << respTime << endl;
     unsigned long rd_data;

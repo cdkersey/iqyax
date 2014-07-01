@@ -121,7 +121,7 @@ void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   #ifdef BTB
   node clear_bf, branch, stall(Lit(0)),
        isBranchFalsePositive(!_(in, "branch") && _(in, "bp_branch"));
-  branch = BloomFilter<8, 1>(
+  branch = BloomFilter<BF_SZ, BF_HASHES>(
     pc, _(in,"branch_pc"), _(in,"branch"), clear_bf
   );
   TAP(branch);
@@ -523,7 +523,7 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   in_valid = _(in, "valid") && !bubble;
 
   node branch_mispredict(in_valid && next_pc != actual_next_pc),
-       branch_taken(in_valid && (_(in, "pc")+Lit<N>(4)) != actual_next_pc);
+       branch_taken(in_valid && (_(in, "pc")+LitW(4)) != actual_next_pc);
   TAP(branch_mispredict);
   TAP(branch_taken);
 
@@ -796,6 +796,20 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   stall = _(out_buf, "stall") || gen_stall;
   #endif
 
+  #ifdef SHOW_PC
+  static unsigned long pcVal;
+
+  EgressInt(pcVal, _(in, "pc"));
+
+  EgressFunc([](bool x){
+    if (x) cout << sim_time() << " PC> " << hex << pcVal << dec << endl;
+  }, in_valid && !bubble
+    #ifdef STALL_SIGNAL
+    && !stall
+    #endif
+  );
+  #endif
+
   HIERARCHY_EXIT();
 }
 
@@ -953,9 +967,9 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
   if (SOFT_IO) {
     static unsigned consoleOutVal;
     EgressInt(consoleOutVal, _(in, "result"));
-    node wrConsole(_(in, "mem_wr") && _(in, "addr") == Lit<N>(1ul<<(N-1))),
-      wrChar(_(in, "mem_wr") && _(in, "addr") == Lit<N>((1ul<<N-1)+N/4)),
-         stopSimNode(_(in, "mem_wr") && _(in, "addr")==Lit<N>((1ul<<N-1)+N/8));
+    node wrConsole(_(in, "mem_wr") && _(in, "addr") == LitW(1ul<<(N-1))),
+      wrChar(_(in, "mem_wr") && _(in, "addr") == LitW((1ul<<N-1)+N/4)),
+         stopSimNode(_(in, "mem_wr") && _(in, "addr") == LitW((1ul<<N-1)+N/8));
 
     EgressFunc([](bool x){
       if (x) cout << "OUTPUT> " << consoleOutVal << endl;
@@ -1027,10 +1041,6 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
     }, _(sst_resp, "valid"));
     #endif
 
-    EgressFunc([](bool x){
-      if (x) cout << sim_time() << " PC> " << hex << pcVal << dec << endl;
-    }, Lit(1));
- 
     EgressFunc([](bool x) {
       if (x) cout << "RESULT> " << resultVal << endl;
     }, _(out, "rdest_valid"));
