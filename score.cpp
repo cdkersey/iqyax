@@ -588,14 +588,20 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
 
   // TODO: rename the original branch_mispredict
   node bp_failure_to_predict(!_(in, "bp_valid") && branch_taken),
+       bp_false_positive(_(in, "bp_valid") && _(in, "bp_predict_taken")
+         && !_(out_pc, "branch")
+         #ifdef STALL_SIGNAL
+         && !stall
+         #endif
+       ),
        bp_mispredict_t(_(in, "bp_valid") && _(in, "bp_predict_taken")
-         && !branch_taken && in_valid
+         && !branch_taken && _(out_pc, "branch") && in_valid
          #ifdef STALL_SIGNAL
          && !stall
          #endif
        ),
        bp_mispredict_nt(_(in, "bp_valid") && !_(in,"bp_predict_taken")
-         && branch_taken && in_valid
+         && branch_taken && _(out_pc, "branch") && in_valid
          #ifdef STALL_SIGNAL
          && !stall
          #endif
@@ -614,6 +620,8 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   Counter("mispredict_nt", bp_mispredict_nt);
   Counter("bp_wrong_target", bp_wrong_target);
   Counter("branches", _(out_pc, "branch")); 
+
+  TAP(bp_false_positive);
   #endif
 
   Counter("cycles", Lit(1));
@@ -630,7 +638,7 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   #ifdef BTB
     IF(bubble_ctr == Lit<2>(0) &&
         (bp_mispredict_t || bp_mispredict_nt || bp_wrong_target ||
-           bp_failure_to_predict),
+           bp_failure_to_predict || bp_false_positive),
           Lit<2>(2)).
   #else
     IF(branch_mispredict, Lit<2>(2)).
@@ -651,10 +659,22 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
 
   
   #ifdef BTB
+  // If we corrected the PC last instruction, this false positive only affects
+  // the bubble.
+  node prev_ldpc(Wreg(
+    #ifdef STALL_SIGNAL
+    !stall,
+    #else
+    Lit(1),
+    #endif
+    /*bp_failure_to_predict || bp_mispredict_nt*/_(out_pc, "ldpc")
+  ));
+
   _(out_pc, "ldpc") = bp_mispredict_t || bp_mispredict_nt ||
-                      bp_failure_to_predict || bp_wrong_target;
+                      bp_failure_to_predict || bp_wrong_target ||
+                      (bp_false_positive && !prev_ldpc);
   Cassign(_(out_pc, "val")).
-    IF(bp_mispredict_t, _(in, "pc") + LitW(8)).
+    IF(bp_mispredict_t || bp_false_positive, _(in, "pc") + LitW(2*N/8)).
     ELSE(actual_next_pc);
   #else
   _(out_pc, "ldpc") = branch_mispredict;
@@ -666,7 +686,7 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   #endif
 
   Cassign(_(out, "result")).
-    IF(_(in, "jal"), pc + LitW(N/8)). // jump/branch and link
+    IF(_(in, "jal"), pc + LitW(2*N/8)). // jump/branch and link
     IF(_(in, "mem_wr"), val1). // Store
     IF(op == Lit<6>(0)).
       IF(func == Lit<6>(0x00), val1 << Zext<CLOG2(N)>(imm)). // sll
