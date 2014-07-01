@@ -159,6 +159,19 @@ void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   _(btb_in, "next_pc") = _(in, "val");
   _(btb_in, "state") = _(in, "bp_state");
 
+  // If we predicted a taken branch last cycle, give it a rest this cycle. The
+  // execute stage depends on this in order to properly handle branch delay
+  // slots.
+  node bp_inhibit(Wreg(
+    #ifdef STALL_SIGNAL
+      !stall,
+    #else
+      Lit(1),
+    #endif
+      _(out_buf, "bp_valid") && _(out_buf, "bp_predict_taken")
+  ));
+  TAP(bp_inhibit);
+
   TAP(btb_in); TAP(btb_out); TAP(pc); TAP(clear_bf);
   #endif
 
@@ -191,7 +204,7 @@ void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
 
   #ifdef BTB
   _(out_buf, "bp_valid") = _(out_buf, "bp_branch") && _(btb_out, "valid") &&
-                           !Wreg(!stall, _(in, "ldpc"));
+                           !Wreg(!stall, _(in, "ldpc")) && !bp_inhibit;
   _(out_buf, "bp_state") = _(btb_out, "state");
   _(out_buf, "bp_predict_taken") = _(btb_out, "state")[1];
   _(out_buf, "bp_pc") = _(btb_out, "next_pc");
