@@ -206,7 +206,9 @@ void decode(decode_reg_t &out, fetch_decode_t &in) {
   opcode_t opcode(inst[range<N-6, N-1>()]);
   func_t func;
   Cassign(func).
-    IF(opcode == Lit<6>(0x01), Zext<6>(inst[range<16, 20>()])).
+    IF(opcode == Lit<6>(0x01) ||
+       opcode == Lit<6>(0x06) ||
+       opcode == Lit<6>(0x07), Zext<6>(inst[range<16, 20>()])).
     ELSE(inst[range<0, 5>()]);
 
   _(out, "rsrc0_idx") = inst[range<N-6-5, N-6-1>()];
@@ -502,9 +504,11 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
       ELSE(pc + LitW(4)).
     END().IF(op == Lit<6>(0x06)).
       IF(func == Lit<6>(0x00) && (!OrN(val0) || val0[N-1]), bdest). // blez
+      ELSE(pc + LitW(4)).
     END().IF(op == Lit<6>(0x07)).
       IF(func == Lit<6>(0x00) && OrN(val0) && !val0[N-1], bdest). // bgtz
-    END().    
+      ELSE(pc + LitW(4)).
+    END().
     ELSE(pc + LitW(4));
 
   // When a branch is mispredicted, the next two inputs are to be considered
