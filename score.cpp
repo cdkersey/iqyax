@@ -881,6 +881,72 @@ vec<N/8, bvec<8> > InternalMem(word_t a_in, vec<N/8, bvec<8> > d, bvec<N/8> wr,
   return q;
 }
 
+#ifdef SST_MEM
+void SimpleMemSSTRam(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
+  simpleMemReq_t memSysReq;
+
+  word_t addr(_(_(req, "contents"), "addr"));
+
+  _(_(memSysReq, "contents"), "wr") = _(_(req, "contents"), "wr");
+  _(_(memSysReq, "contents"), "addr") = _(_(req, "contents"), "addr");
+  _(_(memSysReq, "contents"), "size") = _(_(req, "contents"), "size");
+  _(_(memSysReq, "contents"), "data") = _(_(req, "contents"), "data");
+  _(_(memSysReq, "contents"), "id") = _(_(req, "contents"), "id");
+  _(memSysReq, "valid") = _(req, "valid") &&
+    (addr < LitW(0x400000) || addr >= LitW(0x500000));
+    
+  SimpleMemReqPort("0", memSysReq);
+  SimpleMemRespPort("0", resp);
+}
+
+void SimpleMemRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
+                  const char* hex_file)
+{
+  word_t addr(_(_(req, "contents"), "addr"));
+  bvec<IROM_SZ> rom_addr(addr[range<CLOG2(N/8),CLOG2(N/8)+IROM_SZ-1>()]);
+
+  node valid = _(req, "valid") &&
+    (addr >= LitW(0x400000) && addr < LitW(0x500000));
+
+  node fill, empty, next_full, full(Reg(next_full));
+  Cassign(next_full).
+    IF(!full && fill && !empty, Lit(1)).
+    IF(full && empty && !fill, Lit(0)).
+    ELSE(full);
+
+  fill = valid;
+  empty = full && _(resp, "ready");
+
+  stall = full && !_(resp, "ready");
+  _(resp, "valid") = full;
+  _(_(resp, "contents"), "data") =
+    Wreg(fill, LLRom<IROM_SZ, N>(rom_addr, hex_file) >> 
+      Zext<CLOG2(N)>(Cat(addr[range<0,CLOG2(N/8)-1>()], Lit<3>(0)))
+  );
+  _(_(resp, "contents"), "id") = Wreg(fill, _(_(req, "contents"), "id"));
+}
+
+void SimpleMem(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
+               const char *hex_file)
+{
+  bvec<2> stallVec;
+  vec<2, simpleMemResp_t> respVec;
+
+  _(req, "ready") = Lit(1);
+
+  #ifdef SST_MEM
+  SimpleMemSSTRam(stallVec[0], respVec[0], req);
+  #endif
+
+  #ifdef MAP_ROM_COPY
+  SimpleMemRom(stallVec[1], respVec[1], req, hex_file);
+  #endif
+
+  Arbiter(resp, ArbPriority<2>, respVec);
+  stall = OrN(stallVec);
+}
+#endif
+
 void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
          const char *hex_file, bool &stop_sim) {
   HIERARCHY_ENTER();
@@ -967,12 +1033,12 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   _(_(sst_req, "contents"), "locked") = Lit(0);
   _(_(sst_req, "contents"), "id") = Zext<ID_SZ>(mshr_tag); 
 
-  SimpleMemReqPort("0", sst_req);
-
   _(sst_resp, "ready") = Lit(1);
   mem_resp_valid = _(sst_resp, "valid") && !_(_(sst_resp, "contents"), "wr");
   mem_resp_tag = Zext<CLOG2(MSHR_SZ)>(_(_(sst_resp, "contents"), "id"));
-  SimpleMemRespPort("0", sst_resp);
+
+  node mem_stall;
+  SimpleMem(mem_stall, sst_resp, sst_req, hex_file);
 
   TAP(sst_req);
   TAP(sst_resp);
@@ -1119,7 +1185,7 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
     mshr_full ||
     #endif
     #ifdef SST_MEM
-    sst_not_ready || _(in, "rdest_valid") && mem_resp_valid ||
+    sst_not_ready || _(in, "rdest_valid") && mem_resp_valid || mem_stall ||
     #endif
     Lit(0);
   #endif

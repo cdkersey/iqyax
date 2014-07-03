@@ -63,7 +63,7 @@ void tick_eq(cycle_t t) {
     respEvent_t &r(*eq.find(t)->second);
     memUnit_t &m(*r.dest);
 
-    if (m.resp.ready) {
+    if (/*m.resp.ready*/ 1 /* TODO: fix this? */) {
       cout << "Resp: " << r.wr << ", " << r.id << ", "
            << hex << r.data << dec << endl;
       m.resp.valid = true;
