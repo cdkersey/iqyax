@@ -884,6 +884,7 @@ vec<N/8, bvec<8> > InternalMem(word_t a_in, vec<N/8, bvec<8> > d, bvec<N/8> wr,
 #ifdef SST_MEM
 void SimpleMemSSTRam(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
   simpleMemReq_t memSysReq;
+  simpleMemResp_t memSysResp;
 
   word_t addr(_(_(req, "contents"), "addr"));
 
@@ -894,9 +895,16 @@ void SimpleMemSSTRam(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
   _(_(memSysReq, "contents"), "id") = _(_(req, "contents"), "id");
   _(memSysReq, "valid") = _(req, "valid") &&
     (addr < LitW(0x400000) || addr >= LitW(0x500000));
-    
+
   SimpleMemReqPort("0", memSysReq);
-  SimpleMemRespPort("0", resp);
+  SimpleMemRespPort("0", memSysResp);
+
+  // Responses to writes can be silently dropped.
+  _(memSysResp, "ready") = _(resp, "ready");
+  _(resp, "valid") = _(memSysResp,"valid") && !_(_(memSysResp,"contents"),"wr");
+  _(_(resp, "contents"), "id") = _(_(memSysResp, "contents"), "id");
+  _(_(resp, "contents"), "data") = _(_(memSysResp, "contents"), "data");
+  _(_(resp, "contents"), "wr") = Lit(0);
 }
 
 void SimpleMemRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
@@ -941,6 +949,9 @@ void SimpleMem(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
   #ifdef MAP_ROM_COPY
   SimpleMemRom(stallVec[1], respVec[1], req, hex_file);
   #endif
+
+  TAP(stallVec);
+  TAP(respVec);
 
   Arbiter(resp, ArbPriority<2>, respVec);
   stall = OrN(stallVec);
