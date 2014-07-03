@@ -32,12 +32,12 @@ using namespace std;
 using namespace chdl;
 using namespace s_core;
 
-void fetch(fetch_decode_t &out, exec_fetch_t &in,
+void Fetch(fetch_decode_t &out, exec_fetch_t &in,
            const char *hex_file, unsigned initial_pc);
-void decode(decode_reg_t &out, fetch_decode_t &in);
-void reg(reg_exec_t &out, decode_reg_t &in, mem_reg_t &in_wb);
-void exec(exec_mem_t &out, exec_fetch_t &out_pc, reg_exec_t &in, mem_exec_t &f);
-void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
+void Decode(decode_reg_t &out, fetch_decode_t &in);
+void Reg(reg_exec_t &out, decode_reg_t &in, mem_reg_t &in_wb);
+void Exec(exec_mem_t &out, exec_fetch_t &out_pc, reg_exec_t &in, mem_exec_t &f);
+void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
          const char *hex_file, bool &stop_sim);
 
 void simple_core(const char *hex_file, unsigned initial_pc, bool &stop_sim) {
@@ -50,11 +50,11 @@ void simple_core(const char *hex_file, unsigned initial_pc, bool &stop_sim) {
   mem_exec_t mem_exec;
 
                                                          // Pipeline:
-  fetch(fetch_decode, exec_fetch, hex_file, initial_pc); //   STAGE 1
-  decode(decode_reg, fetch_decode);                      //   STAGE 2
-  reg(reg_exec, decode_reg, mem_reg);                    //     STAGE 5
-  exec(exec_mem, exec_fetch, reg_exec, mem_exec);        //   STAGE 3
-  mem(mem_reg, mem_exec, exec_mem, hex_file, stop_sim);  //   STAGE 4
+  Fetch(fetch_decode, exec_fetch, hex_file, initial_pc); //   STAGE 1
+  Decode(decode_reg, fetch_decode);                      //   STAGE 2
+  Reg(reg_exec, decode_reg, mem_reg);                    //     STAGE 5
+  Exec(exec_mem, exec_fetch, reg_exec, mem_exec);        //   STAGE 3
+  Mem(mem_reg, mem_exec, exec_mem, hex_file, stop_sim);  //   STAGE 4
 
   TAP(fetch_decode);
   TAP(decode_reg);
@@ -111,7 +111,7 @@ template <unsigned M, unsigned N> bvec<M> Fold(bvec<N> in) {
 }
 #endif
 
-void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
+void Fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
            const char *hex_file, unsigned initial_pc)
 {
   HIERARCHY_ENTER();
@@ -214,7 +214,7 @@ void fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   HIERARCHY_EXIT();
 }
 
-void decode(decode_reg_t &out, fetch_decode_t &in) {
+void Decode(decode_reg_t &out, fetch_decode_t &in) {
   HIERARCHY_ENTER();
   inst_t inst(_(in, "inst"));
   opcode_t opcode(inst[range<N-6, N-1>()]);
@@ -375,7 +375,7 @@ void decode(decode_reg_t &out, fetch_decode_t &in) {
   HIERARCHY_EXIT();
 }
 
-void reg(reg_exec_t &out_buf, decode_reg_t &in, mem_reg_t &in_wb) {
+void Reg(reg_exec_t &out_buf, decode_reg_t &in, mem_reg_t &in_wb) {
   HIERARCHY_ENTER();
   reg_exec_t out;
 
@@ -434,7 +434,7 @@ void reg(reg_exec_t &out_buf, decode_reg_t &in, mem_reg_t &in_wb) {
   HIERARCHY_EXIT();
 }
 
-void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
+void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
           mem_exec_t &mem_fwd)
 {
   HIERARCHY_ENTER();
@@ -947,7 +947,7 @@ void SimpleMem(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
 }
 #endif
 
-void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
+void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
          const char *hex_file, bool &stop_sim) {
   HIERARCHY_ENTER();
 
