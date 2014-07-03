@@ -37,7 +37,8 @@ void fetch(fetch_decode_t &out, exec_fetch_t &in,
 void decode(decode_reg_t &out, fetch_decode_t &in);
 void reg(reg_exec_t &out, decode_reg_t &in, mem_reg_t &in_wb);
 void exec(exec_mem_t &out, exec_fetch_t &out_pc, reg_exec_t &in, mem_exec_t &f);
-void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim);
+void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
+         const char *hex_file, bool &stop_sim);
 
 void simple_core(const char *hex_file, unsigned initial_pc, bool &stop_sim) {
   fetch_decode_t fetch_decode;
@@ -53,7 +54,7 @@ void simple_core(const char *hex_file, unsigned initial_pc, bool &stop_sim) {
   decode(decode_reg, fetch_decode);                      //   STAGE 2
   reg(reg_exec, decode_reg, mem_reg);                    //     STAGE 5
   exec(exec_mem, exec_fetch, reg_exec, mem_exec);        //   STAGE 3
-  mem(mem_reg, mem_exec, exec_mem, stop_sim);            //   STAGE 4
+  mem(mem_reg, mem_exec, exec_mem, hex_file, stop_sim);  //   STAGE 4
 
   TAP(fetch_decode);
   TAP(decode_reg);
@@ -848,7 +849,40 @@ void exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   HIERARCHY_EXIT();
 }
 
-void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
+// Scratchpad memory configuration
+vec<N/8, bvec<8> > InternalMem(word_t a_in, vec<N/8, bvec<8> > d, bvec<N/8> wr,
+                               const char *hex_file)
+{
+  const unsigned B(N/8), BB(CLOG2(N/8));
+
+  word_t a(Reg(a_in));
+  vec<B, bvec<8> > q;
+  bvec<RAM_SZ> sram_addr(a_in[range<BB, BB + RAM_SZ - 1>()]);
+  bvec<IROM_SZ> rom_addr(a_in[range<BB, BB + IROM_SZ - 1>()]);
+
+  word_t irom_qw(Reg(LLRom<IROM_SZ, N>(rom_addr, hex_file)));
+  vec<B, bvec<8> > irom_q;
+  for (unsigned i = 0; i < B; ++i)
+    for (unsigned j = 0; j < 8; ++j)
+      irom_q[i][j] = irom_qw[i*8 + j];
+
+  for (unsigned i = 0; i < N/8; ++i) {
+    Cassign(q[i]).
+      #ifdef MAP_ROM_COPY
+      IF(a >= LitW(0x400000) && a < LitW(0x500000), irom_q[i]).
+      #endif
+      ELSE(Syncmem(sram_addr, d[i], wr[i]));
+  }
+
+  TAP(a);
+  TAP(q);
+  TAP(irom_q);
+
+  return q;
+}
+
+void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
+         const char *hex_file, bool &stop_sim) {
   HIERARCHY_ENTER();
 
   const unsigned B(N/8), BB(CLOG2(B));
@@ -871,9 +905,7 @@ void mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in, bool &stop_sim) {
         ELSE(_(in, "result")[i*8 + j]);
 
   // Instantiate the SRAMs
-  bvec<RAM_SZ> sram_addr(_(in, "addr")[range<BB, BB + RAM_SZ - 1>()]);
-  for (unsigned i = 0; i < B; ++i)
-    memq[i] = Syncmem(sram_addr, memd[i], wr[i]);
+  memq = InternalMem(_(in, "addr"), memd, wr, hex_file);
 
   // Combine output bytes into single word
   word_t memq_word;
