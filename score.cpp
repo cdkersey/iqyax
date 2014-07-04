@@ -774,9 +774,9 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   #ifdef SCOREBOARD
   node set_scoreboard(_(mem_fwd, "rdest_valid") && _(mem_fwd, "mem_rd")),
        clear_scoreboard(_(out, "mem_rd") && in_valid),
-       check_scoreboard_0(_(in, "rsrc0_valid")),
-       check_scoreboard_1(_(in, "rsrc1_valid")),
-      check_scoreboard_dest(_(in, "rdest_valid"));
+       check_scoreboard_0(_(in, "rsrc0_valid") && !bubble),
+       check_scoreboard_1(_(in, "rsrc1_valid") && !bubble),
+       check_scoreboard_dest(_(in, "rdest_valid") && !bubble);
   rname_t set_scoreboard_idx(_(mem_fwd, "rdest_idx")),
           clear_scoreboard_idx(_(in, "rdest_idx")),
           check_scoreboard_0_idx(_(in, "rsrc0_idx")),

@@ -9,7 +9,7 @@
 #define BTB
 // #define RANDOM_STALL
 #define SST_MEM
-// #define INTERNAL_MEM
+#define INTERNAL_MEM
 #define SHOW_PC
 
 #define MAP_ROM_COPY
@@ -40,7 +40,7 @@ namespace s_core {
   const chdl::cycle_t TMAX(100000);
 
   #ifdef BTB
-  const unsigned BTB_SZ(1), BF_SZ(6), BF_HASHES(1);
+  const unsigned BTB_SZ(5), BF_SZ(6), BF_HASHES(1);
   #endif
 
   typedef chdl::bvec<5> rname_t;
