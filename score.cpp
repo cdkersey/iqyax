@@ -800,7 +800,12 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
     IF(start_div, Lit(1)).
     ELSE(div_sel);
 
+  #ifdef ONE_CYC_MUL
+  mul_out = Wreg(start_mul, mul_a * mul_b);
+  mul_busy = Lit(0);
+  #else
   mul_out = SerialMul(mul_busy, mul_a, mul_b, start_mul);
+  #endif
   SerialDiv(div_out, div_rem, div_ready, div_waiting,
             val0, val1, start_div, Lit(0));
 

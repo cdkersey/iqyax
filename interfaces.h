@@ -7,6 +7,7 @@
 #define DELAYED_BRANCH
 
 #define MUL_DIV
+// #define ONE_CYC_MUL
 #define BTB
 #define TRAP
 
@@ -47,7 +48,7 @@ namespace s_core {
   const chdl::cycle_t TMAX(100000);
 
   #ifdef BTB
-  const unsigned BTB_SZ(5), BF_SZ(6), BF_HASHES(1);
+  const unsigned BTB_SZ(5), BF_SZ(7), BF_HASHES(1);
   #endif
 
   typedef chdl::bvec<5> rname_t;
