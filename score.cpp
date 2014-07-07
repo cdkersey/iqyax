@@ -187,7 +187,7 @@ void Fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
     IF(_(out_buf, "bp_valid") && _(out_buf, "bp_predict_taken"),
       _(out_buf, "bp_pc")).
     #endif
-    ELSE(pc + LitW(4));
+    ELSE(pc + LitW(N/8));
 
   _(out, "inst") =
     LLRom<IROM_SZ, N>(Zext<IROM_SZ>(pc[range<CLOG2(N/8),N-1>()]), hex_file);
@@ -444,7 +444,7 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
 
   #ifdef RANDOM_STALL
   // Test stall signal by generating random stalls.
-  node random_stall = Lfsr<1, 15, 1, 0x1234>()[0] || _(out_buf, "stall");
+  node random_stall = Lfsr<1, 15, 1, 0x1234>()[0];
   TAP(random_stall);
   #endif
 
@@ -506,7 +506,23 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   TAP(val0); TAP(val1); TAP(val0_in); TAP(val1_in);
   TAP(wr_val_0); TAP(wr_val_1);
 
+  #ifdef TRAP
+  node trap(in_valid &&
+    #ifdef STALL_SIGNAL
+    !stall &&
+    #endif
+    ( op == Lit<6>(0x0c) || // syscall
+      op == Lit<6>(0x0d) && func == Lit<6>(0x18) )// break
+  );
+  word_t trap_entry,
+         trap_pc(Wreg(trap && in_valid, _(in, "pc") + LitW(N/8)));
+  #endif
+
   Cassign(actual_next_pc).
+    #ifdef TRAP
+    IF(trap, trap_entry). // trap
+    IF(op == Lit<6>(0x10) && func == Lit<6>(0x18), trap_pc). // eret
+    #endif
     IF(op == Lit<6>(0x02) || op == Lit<6>(0x03), jdest). // j, jal
     IF(op == Lit<6>(0x00) && func == Lit<6>(0x08), val0). // jr
     IF(op == Lit<6>(0x04) && val0 == val1, bdest). // beq
@@ -668,7 +684,7 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
     #else
     Lit(1),
     #endif
-    /*bp_failure_to_predict || bp_mispredict_nt*/_(out_pc, "ldpc")
+    _(out_pc, "ldpc")
   ));
 
   _(out_pc, "ldpc") = bp_mispredict_t || bp_mispredict_nt ||

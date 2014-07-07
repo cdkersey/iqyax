@@ -5,14 +5,19 @@
 #include <chdl/chdl.h>
 
 #define DELAYED_BRANCH
+
 #define MUL_DIV
 #define BTB
-// #define RANDOM_STALL
-#define SST_MEM
-#define INTERNAL_MEM
-#define SHOW_PC
+#define TRAP
 
+// #define RANDOM_STALL
+
+#define SST_MEM
+// #define INTERNAL_MEM
 #define MAP_ROM_COPY
+
+
+#define SHOW_PC
 
 // #define SCOREBOARD // These can be enabled manually but are also enabled
 // #define MSHR       // automatically as needed.
