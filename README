@@ -1,0 +1,20 @@
+SimpleCore
+----------
+
+0.0 - Contents
+--------------
+
+  0 - Front Matter
+    0.0 - Table of Contents
+    0.1 - Introduction
+  1 - Getting Started
+
+0.1 - Introduction
+------------------
+
+SimpleCore is a full-featured open source soft core implemented using CHDL, a
+C++ hardware design library.
+
+1 - Getting Started
+-------------------
+
