@@ -93,6 +93,8 @@ int main(int argc, char** argv) {
   return 0;
 }
 
+word_t InfoRom(bvec<4> a);
+
 #ifdef BTB
 template <unsigned M, unsigned N> bvec<M> Fold(bvec<N> in) {
   HIERARCHY_ENTER();
@@ -341,18 +343,32 @@ void Decode(decode_reg_t &out, fetch_decode_t &in) {
 
   _(out, "mem_rd") =
     _(in, "valid") && (
-      opcode == Lit<6>(0x20) || // lb
-      opcode == Lit<6>(0x23) ); // lw
+         opcode == Lit<6>(0x20) // lb
+      || opcode == Lit<6>(0x23) // lw
+      #ifdef LLSC
+      || opcode == Lit<6>(0x30) // ll
+      #endif
+  );
 
    _(out, "mem_wr") =
     _(in, "valid") && (
-      opcode == Lit<6>(0x28) || // sb
-      opcode == Lit<6>(0x2b) ); // sw
+         opcode == Lit<6>(0x28) // sb
+      || opcode == Lit<6>(0x2b) // sw
+      #ifdef LLSC
+      || opcode == Lit<6>(0x38) // sc
+      #endif
+   );
 
   _(out, "mem_byte") =
     _(in, "valid") && (
-      opcode == Lit<6>(0x28) || // sb
-      opcode == Lit<6>(0x20) ); // lb
+         opcode == Lit<6>(0x28) // sb
+      || opcode == Lit<6>(0x20) // lb
+  );
+
+  #ifdef LLSC
+  _(out, "llsc") =
+     _(in, "valid") && (opcode == Lit<6>(0x30) || opcode == Lit<6>(0x38));
+  #endif
 
   _(out, "op") = opcode;
   _(out, "func") = func;
@@ -429,6 +445,10 @@ void Reg(reg_exec_t &out_buf, decode_reg_t &in, mem_reg_t &in_wb) {
   _(out, "bp_branch") = _(in, "bp_branch");
   _(out, "bp_predict_taken") = _(in, "bp_predict_taken");
   _(out, "bp_pc") = _(in, "bp_pc");
+  #endif
+
+  #ifdef LLSC
+  _(out, "llsc") = _(in, "llsc");
   #endif
 
   HIERARCHY_EXIT();
@@ -511,11 +531,15 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
     #ifdef STALL_SIGNAL
     !stall &&
     #endif
-    ( op == Lit<6>(0x0c) || // syscall
-      op == Lit<6>(0x0d) && func == Lit<6>(0x18) )// break
+    ( op == Lit<6>(0x00) && func == Lit<6>(0x0c) || // syscall
+      op == Lit<6>(0x00) && func == Lit<6>(0x0d) ) // break
   );
   word_t trap_entry,
          trap_pc(Wreg(trap && in_valid, _(in, "pc") + LitW(N/8)));
+
+  TAP(trap);
+  TAP(trap_entry);
+  TAP(trap_pc);
   #endif
 
   Cassign(actual_next_pc).
@@ -669,6 +693,7 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   _(out, "addr") = val0 + _(in, "imm");
   _(out, "mem_rd") = _(in, "mem_rd") && in_valid;
   _(out, "mem_wr") = _(in, "mem_wr") && in_valid;
+  _(out, "llsc") = _(in, "llsc") && in_valid;
   _(out, "mem_byte") = _(in, "mem_byte");
 
   _(out, "rdest_idx") = _(in, "rdest_idx");
@@ -882,10 +907,19 @@ vec<N/8, bvec<8> > InternalMem(word_t a_in, vec<N/8, bvec<8> > d, bvec<N/8> wr,
     for (unsigned j = 0; j < 8; ++j)
       irom_q[i][j] = irom_qw[i*8 + j];
 
+  word_t inforom_qw(Reg(InfoRom(a_in[range<BB, BB + 3>()])));
+  vec<B, bvec<8> > inforom_q;
+  for (unsigned i = 0; i < B; ++i)
+    for (unsigned j = 0; j < 8; ++j)
+      inforom_q[i][j] = inforom_qw[i*8 + j];
+
   for (unsigned i = 0; i < N/8; ++i) {
     Cassign(q[i]).
       #ifdef MAP_ROM_COPY
       IF(a >= LitW(0x400000) && a < LitW(0x500000), irom_q[i]).
+      #endif
+      #ifdef INFO_ROM
+      IF(a >= LitW(0x88000000) && a < LitW(0x88000010), inforom_q[i]).
       #endif
       ELSE(Syncmem(sram_addr, d[i], wr[i]));
   }
@@ -909,8 +943,14 @@ void SimpleMemSSTRam(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
   _(_(memSysReq, "contents"), "size") = _(_(req, "contents"), "size");
   _(_(memSysReq, "contents"), "data") = _(_(req, "contents"), "data");
   _(_(memSysReq, "contents"), "id") = _(_(req, "contents"), "id");
-  _(memSysReq, "valid") = _(req, "valid") &&
-    (addr < LitW(0x400000) || addr >= LitW(0x500000));
+  _(memSysReq, "valid") = _(req, "valid")
+  #ifdef MAP_ROM_COPY
+    && (addr < LitW(0x400000) || addr >= LitW(0x500000))
+  #endif
+  #ifdef INFO_ROM
+    && (addr < LitW(0x88000000) || addr >= LitW(0x88000010))
+  #endif
+  ;
 
   SimpleMemReqPort("0", memSysReq);
   SimpleMemRespPort("0", memSysResp);
@@ -950,11 +990,36 @@ void SimpleMemRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
   _(_(resp, "contents"), "id") = Wreg(fill, _(_(req, "contents"), "id"));
 }
 
+void SimpleMemInfoRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
+  word_t addr(_(_(req, "contents"), "addr"));
+  bvec<4> rom_addr(addr[range<CLOG2(N/8),CLOG2(N/8)+3>()]);
+
+  node valid = _(req, "valid") &&
+    (addr >= LitW(0x88000000) && addr < LitW(0x88000010));
+
+  node fill, empty, next_full, full(Reg(next_full));
+  Cassign(next_full).
+    IF(!full && fill && !empty, Lit(1)).
+    IF(full && empty && !fill, Lit(0)).
+    ELSE(full);
+
+  fill = valid;
+  empty = full && _(resp, "ready");
+
+  stall = full && !_(resp, "ready");
+  _(resp, "valid") = full;
+  _(_(resp, "contents"), "data") =
+    Wreg(fill, InfoRom(rom_addr) >> 
+      Zext<CLOG2(N)>(Cat(addr[range<0,CLOG2(N/8)-1>()], Lit<3>(0)))
+    );
+  _(_(resp, "contents"), "id") = Wreg(fill, _(_(req, "contents"), "id"));
+}
+
 void SimpleMem(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
                const char *hex_file)
 {
-  bvec<2> stallVec;
-  vec<2, simpleMemResp_t> respVec;
+  bvec<4> stallVec;
+  vec<4, simpleMemResp_t> respVec;
 
   _(req, "ready") = Lit(1);
 
@@ -966,10 +1031,14 @@ void SimpleMem(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
   SimpleMemRom(stallVec[1], respVec[1], req, hex_file);
   #endif
 
+  #ifdef INFO_ROM
+  SimpleMemInfoRom(stallVec[2], respVec[2], req);
+  #endif
+
   TAP(stallVec);
   TAP(respVec);
 
-  Arbiter(resp, ArbPriority<2>, respVec);
+  Arbiter(resp, ArbPriority<4>, respVec);
   stall = OrN(stallVec);
 }
 #endif
@@ -1056,7 +1125,11 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
     Zext<CLOG2(DATA_SZ/8 + 1)>(Mux(_(in, "mem_byte"), LitW(N/8), LitW(1)));
   _(_(sst_req, "contents"), "data") = Zext<DATA_SZ>(_(in, "result"));
   _(_(sst_req, "contents"), "uncached") = Lit(0);
+  #ifdef LLSC
+  _(_(sst_req, "contents"), "llsc") = _(in, "llsc");
+  #else
   _(_(sst_req, "contents"), "llsc") = Lit(0);
+  #endif
   _(_(sst_req, "contents"), "locked") = Lit(0);
   _(_(sst_req, "contents"), "id") = Zext<ID_SZ>(mshr_tag); 
 
@@ -1218,4 +1291,40 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   #endif
 
   HIERARCHY_EXIT();
+}
+
+word_t InfoRom(bvec<4> a) {
+  // Assemble an "options vector"
+  unsigned ovec(0);
+  
+  #ifdef MUL_DIV
+  ovec |= 0x01;
+  #endif
+
+  #ifdef TRAP
+  ovec |= 0x02;
+  #endif
+
+  #ifdef LLSC
+  ovec |= 0x08;
+  #endif
+
+  #ifdef INTERNAL_MEM
+  ovec |= 0x08;
+  #endif
+
+  #ifdef BTB
+  ovec != 0x10;
+  #endif
+
+  #ifdef MAP_ROM_COPY
+  ovec |= 0x20;
+  #endif
+
+  word_t q;
+  Cassign(q).
+    IF(a == Lit<4>(0), LitW(ovec)).
+    ELSE(LitW(0));
+
+  return q;
 }

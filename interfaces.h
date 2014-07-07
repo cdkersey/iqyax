@@ -13,7 +13,9 @@
 // #define RANDOM_STALL
 
 #define SST_MEM
+#define LLSC
 // #define INTERNAL_MEM
+#define INFO_ROM
 #define MAP_ROM_COPY
 
 
@@ -72,7 +74,7 @@ namespace s_core {
           ,chdl::ag<STP("bp_predict_taken"), chdl::node> > > > >
           #endif
           #ifdef STALL_SIGNAL
-           >
+          >
           #endif
   > > > > fetch_decode_t;
 
@@ -94,6 +96,9 @@ namespace s_core {
           chdl::ag<STP("jal"), chdl::node,
           chdl::ag<STP("next_pc"), word_t,
           chdl::ag<STP("pc"), word_t
+          #ifdef LLSC
+          ,chdl::ag<STP("llsc"), chdl::node
+          #endif
           #ifdef STALL_SIGNAL
           ,chdl::ag<STP("stall"), chdl::node
           #endif
@@ -105,7 +110,10 @@ namespace s_core {
           ,chdl::ag<STP("bp_predict_taken"), chdl::node> > > > >
           #endif
           #ifdef STALL_SIGNAL
-           >
+          >
+          #endif
+          #ifdef LLSC
+          >
           #endif
   > > > > > > > > > > > > > > > > > decode_reg_t;
 
@@ -129,6 +137,9 @@ namespace s_core {
           chdl::ag<STP("jal"), chdl::node,
           chdl::ag<STP("next_pc"), word_t,
           chdl::ag<STP("pc"), word_t
+          #ifdef LLSC
+          ,chdl::ag<STP("llsc"), chdl::node
+          #endif
           #ifdef STALL_SIGNAL
           ,chdl::ag<STP("stall"), chdl::node
           #endif
@@ -140,7 +151,10 @@ namespace s_core {
           ,chdl::ag<STP("bp_predict_taken"), chdl::node> > > > >
           #endif
           #ifdef STALL_SIGNAL
-           >
+          >
+          #endif
+          #ifdef LLSC
+          >
           #endif
   > > > > > > > > > > > > > > > > > > > reg_exec_t;
 
@@ -164,8 +178,14 @@ namespace s_core {
           chdl::ag<STP("mem_wr"), chdl::node,
           chdl::ag<STP("mem_byte"), chdl::node,
           chdl::ag<STP("pc"), word_t
+          #ifdef LLSC
+          ,chdl::ag<STP("llsc"), chdl::node
+          #endif
           #ifdef STALL_SIGNAL
            ,chdl::ag<STP("stall"), chdl::node>
+          #endif
+          #ifdef LLSC
+          >
           #endif
   > > > > > > > > exec_mem_t;
 
