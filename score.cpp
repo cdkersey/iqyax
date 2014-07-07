@@ -38,9 +38,11 @@ void Decode(decode_reg_t &out, fetch_decode_t &in);
 void Reg(reg_exec_t &out, decode_reg_t &in, mem_reg_t &in_wb);
 void Exec(exec_mem_t &out, exec_fetch_t &out_pc, reg_exec_t &in, mem_exec_t &f);
 void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
-         const char *hex_file, bool &stop_sim);
+         const char *hex_file, bool &stop_sim, unsigned core_id);
 
-void simple_core(const char *hex_file, unsigned initial_pc, bool &stop_sim) {
+void SimpleCore(const char *hex_file, unsigned initial_pc, bool &stop_sim,
+                unsigned core_id = 0)
+{
   fetch_decode_t fetch_decode;
   decode_reg_t decode_reg;
   reg_exec_t reg_exec;
@@ -49,12 +51,12 @@ void simple_core(const char *hex_file, unsigned initial_pc, bool &stop_sim) {
   mem_reg_t mem_reg;
   mem_exec_t mem_exec;
 
-                                                         // Pipeline:
-  Fetch(fetch_decode, exec_fetch, hex_file, initial_pc); //   STAGE 1
-  Decode(decode_reg, fetch_decode);                      //   STAGE 2
-  Reg(reg_exec, decode_reg, mem_reg);                    //     STAGE 5
-  Exec(exec_mem, exec_fetch, reg_exec, mem_exec);        //   STAGE 3
-  Mem(mem_reg, mem_exec, exec_mem, hex_file, stop_sim);  //   STAGE 4
+                                                                  // Pipeline:
+  Fetch(fetch_decode, exec_fetch, hex_file, initial_pc);          //   STAGE 1
+  Decode(decode_reg, fetch_decode);                               //   STAGE 2
+  Reg(reg_exec, decode_reg, mem_reg);                             //     STAGE 5
+  Exec(exec_mem, exec_fetch, reg_exec, mem_exec);                 //   STAGE 3
+  Mem(mem_reg, mem_exec, exec_mem, hex_file, stop_sim, core_id);  //   STAGE 4
 
   TAP(fetch_decode);
   TAP(decode_reg);
@@ -74,7 +76,7 @@ int main(int argc, char** argv) {
     iss >> hex >> initial_pc;
   }
 
-  simple_core((argc >= 2 ? argv[1] : "score.hex"), initial_pc, stop_sim);
+  SimpleCore((argc >= 2 ? argv[1] : "score.hex"), initial_pc, stop_sim);
 
   if (cycdet()) { cerr << "Error: Cycle detected.\n"; return 1; }
 
@@ -93,7 +95,7 @@ int main(int argc, char** argv) {
   return 0;
 }
 
-word_t InfoRom(bvec<4> a);
+word_t InfoRom(bvec<4> a, unsigned core_id);
 
 #ifdef BTB
 template <unsigned M, unsigned N> bvec<M> Fold(bvec<N> in) {
@@ -897,7 +899,7 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
 
 // Scratchpad memory configuration
 vec<N/8, bvec<8> > InternalMem(word_t a_in, vec<N/8, bvec<8> > d, bvec<N/8> wr,
-                               const char *hex_file)
+                               const char *hex_file, unsigned core_id)
 {
   const unsigned B(N/8), BB(CLOG2(N/8));
 
@@ -912,7 +914,7 @@ vec<N/8, bvec<8> > InternalMem(word_t a_in, vec<N/8, bvec<8> > d, bvec<N/8> wr,
     for (unsigned j = 0; j < 8; ++j)
       irom_q[i][j] = irom_qw[i*8 + j];
 
-  word_t inforom_qw(Reg(InfoRom(a_in[range<BB, BB + 3>()])));
+  word_t inforom_qw(Reg(InfoRom(a_in[range<BB, BB + 3>()], core_id)));
   vec<B, bvec<8> > inforom_q;
   for (unsigned i = 0; i < B; ++i)
     for (unsigned j = 0; j < 8; ++j)
@@ -995,7 +997,9 @@ void SimpleMemRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
   _(_(resp, "contents"), "id") = Wreg(fill, _(_(req, "contents"), "id"));
 }
 
-void SimpleMemInfoRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
+void SimpleMemInfoRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
+                      unsigned core_id)
+{
   word_t addr(_(_(req, "contents"), "addr"));
   bvec<4> rom_addr(addr[range<CLOG2(N/8),CLOG2(N/8)+3>()]);
 
@@ -1014,14 +1018,14 @@ void SimpleMemInfoRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
   stall = full && !_(resp, "ready");
   _(resp, "valid") = full;
   _(_(resp, "contents"), "data") =
-    Wreg(fill, InfoRom(rom_addr) >> 
+    Wreg(fill, InfoRom(rom_addr, core_id) >> 
       Zext<CLOG2(N)>(Cat(addr[range<0,CLOG2(N/8)-1>()], Lit<3>(0)))
     );
   _(_(resp, "contents"), "id") = Wreg(fill, _(_(req, "contents"), "id"));
 }
 
 void SimpleMem(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
-               const char *hex_file)
+               const char *hex_file, unsigned core_id)
 {
   bvec<4> stallVec;
   vec<4, simpleMemResp_t> respVec;
@@ -1037,7 +1041,7 @@ void SimpleMem(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
   #endif
 
   #ifdef INFO_ROM
-  SimpleMemInfoRom(stallVec[2], respVec[2], req);
+  SimpleMemInfoRom(stallVec[2], respVec[2], req, core_id);
   #endif
 
   TAP(stallVec);
@@ -1049,7 +1053,8 @@ void SimpleMem(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
 #endif
 
 void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
-         const char *hex_file, bool &stop_sim) {
+         const char *hex_file, bool &stop_sim, unsigned core_id)
+{
   HIERARCHY_ENTER();
 
   const unsigned B(N/8), BB(CLOG2(B));
@@ -1072,7 +1077,7 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
         ELSE(_(in, "result")[i*8 + j]);
 
   // Instantiate the SRAMs
-  memq = InternalMem(_(in, "addr"), memd, wr, hex_file);
+  memq = InternalMem(_(in, "addr"), memd, wr, hex_file, core_id);
 
   // Combine output bytes into single word
   word_t memq_word;
@@ -1143,7 +1148,7 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   mem_resp_tag = Zext<CLOG2(MSHR_SZ)>(_(_(sst_resp, "contents"), "id"));
 
   node mem_stall;
-  SimpleMem(mem_stall, sst_resp, sst_req, hex_file);
+  SimpleMem(mem_stall, sst_resp, sst_req, hex_file, core_id);
 
   TAP(sst_req);
   TAP(sst_resp);
@@ -1298,7 +1303,7 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   HIERARCHY_EXIT();
 }
 
-word_t InfoRom(bvec<4> a) {
+word_t InfoRom(bvec<4> a, unsigned core_id) {
   // Assemble an "options vector"
   unsigned ovec(0);
   
@@ -1327,8 +1332,9 @@ word_t InfoRom(bvec<4> a) {
   #endif
 
   word_t q;
-  Cassign(q).
-    IF(a == Lit<4>(0), LitW(ovec)).
+  Cassign(q).                            // InfoRom Contents:
+    IF(a == Lit<4>(0x0), LitW(ovec)).    //   0x00: Options vector
+    IF(a == Lit<4>(0x1), LitW(core_id)). //   0x04: Core ID
     ELSE(LitW(0));
 
   return q;
