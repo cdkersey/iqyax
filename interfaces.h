@@ -6,6 +6,7 @@
 
 #define DELAYED_BRANCH
 
+
 #define MUL_DIV
 // #define ONE_CYC_MUL
 #define BTB
@@ -19,6 +20,7 @@
 #define INFO_ROM
 #define MAP_ROM_COPY
 
+#define INST_ROM
 
 #define SHOW_PC
 

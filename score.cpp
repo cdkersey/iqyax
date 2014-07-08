@@ -10,9 +10,9 @@
 
 #include "interfaces.h"
 
-#ifdef RANDOM_STALL
+//#ifdef RANDOM_STALL
 #include <chdl/lfsr.h>
-#endif
+//#endif
 
 #ifdef BTB
 #include <chdl/bloom.h>
@@ -115,6 +115,18 @@ template <unsigned M, unsigned N> bvec<M> Fold(bvec<N> in) {
 }
 #endif
 
+word_t InstMem(node &bubble, word_t addr, node fetch, const char* hex_file) {
+  word_t q;
+
+  #ifdef INST_ROM
+  bubble = Lit(0); //Lfsr<1, 15, 1, 0x1234>()[0];
+  bvec<IROM_SZ> rom_addr(Zext<IROM_SZ>(addr[range<CLOG2(N/8),N-1>()]));
+  q = Wreg(fetch, LLRom<IROM_SZ, N>(rom_addr, hex_file));
+  #endif
+
+  return q;
+}
+
 void Fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
            const char *hex_file, unsigned initial_pc)
 {
@@ -123,17 +135,19 @@ void Fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
 
   word_t pc;
 
+  node imem_bubble, stall(Lit(0));
+
+  #ifdef STALL_SIGNAL
+  stall = _(out_buf, "stall") || imem_bubble;
+  #endif
+
   #ifdef BTB
-  node clear_bf, branch, stall(Lit(0)),
+  node clear_bf, branch,
        isBranchFalsePositive(!_(in, "branch") && _(in, "bp_branch"));
   branch = BloomFilter<BF_SZ, BF_HASHES>(
     pc, _(in,"branch_pc"), _(in,"branch"), clear_bf
   );
   TAP(branch);
-
-  #ifdef STALL_SIGNAL
-  stall = _(out_buf, "stall");
-  #endif
 
   // Clear bloom filter every 7 false positives
   bvec<3> isBranchFalsePositiveCount;
@@ -169,9 +183,9 @@ void Fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   // slots.
   node bp_inhibit(Wreg(
     #ifdef STALL_SIGNAL
-      !stall,
+    !stall,
     #else
-      Lit(1),
+    Lit(1),
     #endif
       _(out_buf, "bp_valid") && _(out_buf, "bp_predict_taken")
   ));
@@ -180,12 +194,21 @@ void Fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   TAP(btb_in); TAP(btb_out); TAP(pc); TAP(clear_bf);
   #endif
 
+  node next_ldpc_pending, ldpc_pending(Reg(next_ldpc_pending));
+  Cassign(next_ldpc_pending).
+    IF(ldpc_pending && !imem_bubble, Lit(0)).
+    IF(_(in, "ldpc") && imem_bubble, Lit(1)).
+    ELSE(ldpc_pending);
+
+  word_t pending_ldpc_val(Wreg(_(in, "ldpc"), _(in, "val")));
+
   word_t next_pc;
-  pc = Reg(next_pc, initial_pc);
+  pc = Wreg(!imem_bubble, next_pc, initial_pc);
   Cassign(next_pc).
     IF(_(in, "ldpc"), _(in, "val")).
+    IF(ldpc_pending, pending_ldpc_val).
     #ifdef STALL_SIGNAL
-    IF(_(out_buf, "stall"), pc).
+    IF(stall, pc).
     #endif
     #ifdef BTB
     IF(_(out_buf, "bp_valid") && _(out_buf, "bp_predict_taken"),
@@ -193,18 +216,15 @@ void Fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
     #endif
     ELSE(pc + LitW(N/8));
 
-  _(out, "inst") =
-    LLRom<IROM_SZ, N>(Zext<IROM_SZ>(pc[range<CLOG2(N/8),N-1>()]), hex_file);
   _(out, "next_pc") = next_pc;
   _(out, "pc") = pc;
 
-  _(out, "valid") = Lit(1);
-
   #ifdef STALL_SIGNAL
-  out_buf = Wreg(!_(out_buf, "stall"), Flatten(out));
-  _(out_buf, "valid") = Reg(_(out, "valid")) && !_(out_buf, "stall");
+  out_buf = Wreg(!stall, Flatten(out));
+  _(out_buf, "valid") = !stall;
   #else
   out_buf = Reg(Flatten(out));
+  _(out_buf, "valid") = !imem_bubble;
   #endif
 
   #ifdef BTB
@@ -214,6 +234,16 @@ void Fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   _(out_buf, "bp_predict_taken") = _(btb_out, "state")[1];
   _(out_buf, "bp_pc") = _(btb_out, "next_pc");
   #endif
+
+  node fetch_enable(
+    Lit(1)
+    #ifdef STALL_SIGNAL
+    && !stall
+    #endif
+  );
+  _(out_buf, "inst") = InstMem(imem_bubble, pc, fetch_enable, hex_file);
+
+  TAP(imem_bubble);
 
   HIERARCHY_EXIT();
 }
@@ -675,6 +705,7 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   );
 
   Cassign(next_bubble_ctr).
+    IF(!_(in, "valid"), bubble_ctr).
   #ifdef STALL_SIGNAL
     IF(_(in, "stall"), bubble_ctr).
   #endif
@@ -816,7 +847,7 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
 
   node muldiv_stall = (mfhi || mflo) && mul_busy || div_busy;
 
-  TAP(mul_out); TAP(mul_a); TAP(mul_b); TAP(start_mul);
+  TAP(mul_out); TAP(mul_a); TAP(mul_b); TAP(start_mul); TAP(muldiv_stall);
   #endif
 
   #ifdef SCOREBOARD
@@ -862,6 +893,7 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   TAP(check_scoreboard_1);
   TAP(check_scoreboard_1_idx);
   TAP(stall_scoreboard_1);
+  TAP(stall_scoreboard_dest);
   #endif
 
   #ifdef STALL_SIGNAL
@@ -876,6 +908,8 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
     stall_scoreboard_0 || stall_scoreboard_1 || stall_scoreboard_dest ||
     #endif
     Lit(0);
+
+  
 
   stall = _(out_buf, "stall") || gen_stall;
   #endif
