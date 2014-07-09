@@ -13,6 +13,7 @@
 #define TRAP
 
 // #define RANDOM_STALL
+// #define INST_ROM_SIMULATE_ICACHE_MISS
 
 #define SST_MEM
 #define LLSC
