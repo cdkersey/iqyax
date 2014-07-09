@@ -9,7 +9,7 @@
 
 #define MUL_DIV
 // #define ONE_CYC_MUL
-// #define BTB
+#define BTB
 #define TRAP
 
 // #define RANDOM_STALL
@@ -52,7 +52,7 @@ namespace s_core {
   const chdl::cycle_t TMAX(100000);
 
   #ifdef BTB
-  const unsigned BTB_SZ(5), BF_SZ(7), BF_HASHES(1);
+  const unsigned BTB_SZ(5), BF_SZ(7), BF_HASHES(2), BF_CLEAR_INT(7);
   #endif
 
   typedef chdl::bvec<5> rname_t;

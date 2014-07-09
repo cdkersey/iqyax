@@ -138,7 +138,7 @@ word_t InstMem(node &bubble, word_t addr, node fetch, const char* hex_file) {
   simpleMemReq_t iMemReq;
   simpleMemResp_t iMemResp;  
 
-  _(iMemReq, "valid") = fetch; // && !bubble;
+  _(iMemReq, "valid") = fetch;
   _(_(iMemReq, "contents"), "wr") = Lit(0);
   _(_(iMemReq, "contents"), "addr") = addr;
   _(_(iMemReq, "contents"), "size") = Lit<CLOG2(DATA_SZ/8 + 1)>(N/8);
@@ -202,11 +202,12 @@ void Fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   );
   TAP(branch);
 
-  // Clear bloom filter every 7 false positives
-  bvec<3> isBranchFalsePositiveCount;
+  // Clear bloom filter every 2^BF_CLEAR_INT - 1 false positives
+  bvec<BF_CLEAR_INT> isBranchFalsePositiveCount;
   isBranchFalsePositiveCount =
-    Wreg(isBranchFalsePositive || isBranchFalsePositiveCount == Lit<3>(7),
-           isBranchFalsePositiveCount + Lit<3>(1));
+    Wreg(isBranchFalsePositive ||
+         isBranchFalsePositiveCount == Lit<BF_CLEAR_INT>(~0ul),
+           isBranchFalsePositiveCount + Lit<BF_CLEAR_INT>(1));
   clear_bf = AndN(isBranchFalsePositiveCount);
 
   Counter("isbranch_false_negatives",
@@ -671,9 +672,10 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   #ifdef BTB
     // Identify this instruction as a branch for the branch predictor
     _(out_pc, "branch") =
-      #ifdef STALL_SIGNAL
-      !stall &&
-      #endif
+      in_valid &&
+      //#ifdef STALL_SIGNAL
+      //!stall &&
+      //#endif
       !bubble &&
       ((op == Lit<6>(0x02) || op == Lit<6>(0x03)) ||    // j, jal
        (op == Lit<6>(0x00) && func == Lit<6>(0x08)) ||  // jr
@@ -715,29 +717,29 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
     ELSE(Lit<2>(1));
 
   // TODO: rename the original branch_mispredict
-  node bp_failure_to_predict(!_(in, "bp_valid") && branch_taken),
-       bp_false_positive(_(in, "bp_valid") && _(in, "bp_predict_taken")
-         && !_(out_pc, "branch")
+  node bp_failure_to_predict(in_valid && !_(in, "bp_valid") && branch_taken),
+       bp_false_positive(in_valid && _(in, "bp_valid") &&
+         _(in, "bp_predict_taken") && !_(out_pc, "branch")
          #ifdef STALL_SIGNAL
          && !stall
          #endif
        ),
-       bp_mispredict_t(_(in, "bp_valid") && _(in, "bp_predict_taken")
-         && !branch_taken && _(out_pc, "branch") && in_valid
+       bp_mispredict_t(in_valid && _(in, "bp_valid") &&
+         _(in, "bp_predict_taken") && !branch_taken && _(out_pc, "branch")
          #ifdef STALL_SIGNAL
          && !stall
          #endif
        ),
-       bp_mispredict_nt(_(in, "bp_valid") && !_(in,"bp_predict_taken")
-         && branch_taken && _(out_pc, "branch") && in_valid
+       bp_mispredict_nt(in_valid && _(in, "bp_valid") &&
+         !_(in,"bp_predict_taken") && branch_taken && _(out_pc, "branch")
          #ifdef STALL_SIGNAL
          && !stall
          #endif
        ),
-       bp_wrong_target(_(in, "bp_valid") && actual_next_pc != _(in, "bp_pc") &&
-                         !bp_mispredict_t && !bp_mispredict_nt && in_valid &&
-		       _(in, "bp_branch") && _(out_pc, "branch") &&
-                       _(in, "bp_predict_taken")
+       bp_wrong_target(in_valid && _(in, "bp_valid") &&
+         actual_next_pc != _(in, "bp_pc") && !bp_mispredict_t &&
+         !bp_mispredict_nt && _(in, "bp_branch") && _(out_pc, "branch") &&
+         _(in, "bp_predict_taken")
          #ifdef STALL_SIGNAL
          && !stall
          #endif
@@ -792,10 +794,9 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   // If we corrected the PC last instruction, this false positive only affects
   // the bubble.
   node prev_ldpc(Wreg(
+    _(in, "valid")
     #ifdef STALL_SIGNAL
-    !stall,
-    #else
-    Lit(1),
+    && !stall,
     #endif
     _(out_pc, "ldpc")
   ));
