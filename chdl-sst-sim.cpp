@@ -27,9 +27,9 @@ struct resp_t {
 struct memUnit_t {
   req_t req;
   resp_t resp;
-
-  map<unsigned long, unsigned long> contents;
 };
+
+map<unsigned long, unsigned long> memvals;
 
 struct respEvent_t {
   respEvent_t(memUnit_t *dest, unsigned long data, unsigned id, bool wr)
@@ -100,8 +100,8 @@ void processReq(cycle_t now, memUnit_t *m) {
     while (eq.find(respTime) != eq.end()) ++respTime;
     cout << "  resp scheduled for " << respTime << endl;
     unsigned long rd_data;
-    if (m->req.wr) m->contents[m->req.addr] = m->req.data;
-    else           rd_data = m->contents[m->req.addr];
+    if (m->req.wr) memvals[m->req.addr] = m->req.data;
+    else           rd_data = memvals[m->req.addr];
     
     sched_resp(respTime, m, (m->req.wr?0:rd_data), m->req.id, m->req.wr);
   }
@@ -140,25 +140,44 @@ void SimpleMemRespPort(string ident, simpleMemResp_t &resp) {
 extern unsigned aval, pcval, irval, seqval, mdrval;
 extern bool rvval, rwval;
 
-void chdl_sst_sim_run(bool &stop, cycle_t c) {
+void chdl_sst_sim_run(bool &stop, const char* hex_file, cycle_t c) {
+  if (hex_file) {
+    unsigned long addr(0x400000);
+    ifstream in(hex_file);
+    while (!!in) {
+      unsigned long long val;
+      in >> hex >> val;
+      if (!in) break;
+      memvals[addr] = val;
+      addr += 4;
+    }
+  }
+
   ofstream vcd("score.vcd");
 
   print_vcd_header(vcd);
   print_time(vcd);
-  print_taps(vcd);
   for (unsigned i = 0; i < c && !stop; ++i) {
-    advance();
-
     print_taps(vcd);
+
+    // advance() function broken into individual tick stages.
+    for (auto &t : tickables()[0]) t->pre_tick();
 
     for (auto &x : mu)
       processReq(i, x.second);
 
     tick_eq(i);
 
+    for (auto &t : tickables()[0]) t->tick();
+    for (auto &t : tickables()[0]) t->tock();
+    for (auto &t : tickables()[0]) t->post_tock();
+    ++now;
+    // advance();
+
     print_time(vcd);
   }
   call_final_funcs();
 }
 
+void chdl_sst_sim_run(bool &s, cycle_t c) { chdl_sst_sim_run(s, NULL, c); }
 void chdl_sst_sim_run(cycle_t c) { bool x(false); chdl_sst_sim_run(x, c); }

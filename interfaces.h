@@ -9,7 +9,7 @@
 
 #define MUL_DIV
 // #define ONE_CYC_MUL
-#define BTB
+// #define BTB
 #define TRAP
 
 // #define RANDOM_STALL
@@ -19,9 +19,10 @@
 #define LLSC
 // #define INTERNAL_MEM
 #define INFO_ROM
-#define MAP_ROM_COPY
 
-#define INST_ROM
+#define MAP_ROM_COPY
+// #define INST_ROM
+#define SST_IMEM
 
 #define SHOW_PC
 

@@ -90,7 +90,7 @@ int main(int argc, char** argv) {
   critpath_report(cpr);
 
   #ifdef SST_MEM
-  chdl_sst_sim_run(stop_sim, TMAX);
+  chdl_sst_sim_run(stop_sim, (argc >= 2 ? argv[1] : "score.hex"), TMAX);
   #else
   ofstream vcd("score.vcd");
   run(vcd, stop_sim, TMAX);
@@ -132,6 +132,37 @@ word_t InstMem(node &bubble, word_t addr, node fetch, const char* hex_file) {
 
   bvec<IROM_SZ> rom_addr(Zext<IROM_SZ>(addr[range<CLOG2(N/8),N-1>()]));
   q = Wreg(fetch, LLRom<IROM_SZ, N>(rom_addr, hex_file));
+  #endif
+
+  #ifdef SST_IMEM
+  simpleMemReq_t iMemReq;
+  simpleMemResp_t iMemResp;  
+
+  _(iMemReq, "valid") = fetch; // && !bubble;
+  _(_(iMemReq, "contents"), "wr") = Lit(0);
+  _(_(iMemReq, "contents"), "addr") = addr;
+  _(_(iMemReq, "contents"), "size") = Lit<CLOG2(DATA_SZ/8 + 1)>(N/8);
+  _(_(iMemReq, "contents"), "uncached") = Lit(0);
+  _(_(iMemReq, "contents"), "llsc") = Lit(0);
+  _(_(iMemReq, "contents"), "locked") = Lit(0);
+  _(_(iMemReq, "contents"), "id") = Lit<ID_SZ>(0);
+
+  node next_pending, pending(Reg(next_pending));
+  Cassign(next_pending).
+    IF(!pending && !fetch && _(iMemResp, "valid"), Lit(1)).
+    IF(pending && fetch, Lit(0)).
+    ELSE(pending);
+  TAP(pending);
+
+  _(iMemResp, "ready") = Lit(1);
+  bubble = !(_(iMemResp, "valid") || pending || Reg(Lit(0), 1));
+  q = _(_(iMemResp, "contents"), "data");
+
+  SimpleMemReqPort("1", iMemReq);
+  SimpleMemRespPort("1", iMemResp);
+
+  TAP(iMemReq);
+  TAP(iMemResp);
   #endif
 
   TAP(fetch);
@@ -917,6 +948,9 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   TAP(check_scoreboard_1);
   TAP(check_scoreboard_1_idx);
   TAP(stall_scoreboard_1);
+  TAP(check_scoreboard_dest);
+  TAP(check_scoreboard_dest_idx);
+  TAP(stall_scoreboard_dest);
   #endif
 
   #ifdef STALL_SIGNAL
