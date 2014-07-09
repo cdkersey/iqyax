@@ -10,9 +10,13 @@
 
 #include "interfaces.h"
 
-//#ifdef RANDOM_STALL
+#ifdef RANDOM_STALL
 #include <chdl/lfsr.h>
-//#endif
+#endif
+
+#ifdef INST_ROM_SIMULATE_ICACHE_MISS
+#include <chdl/lfsr.h>
+#endif
 
 #ifdef BTB
 #include <chdl/bloom.h>
@@ -119,10 +123,18 @@ word_t InstMem(node &bubble, word_t addr, node fetch, const char* hex_file) {
   word_t q;
 
   #ifdef INST_ROM
-  bubble = Lit(0); //Lfsr<1, 15, 1, 0x1234>()[0];
+
+  #ifdef INST_ROM_SIMULATE_ICACHE_MISS
+  bubble = Lfsr<1, 15, 1, 0x1234>()[0];
+  #else
+  bubble = Lit(0);
+  #endif
+
   bvec<IROM_SZ> rom_addr(Zext<IROM_SZ>(addr[range<CLOG2(N/8),N-1>()]));
   q = Wreg(fetch, LLRom<IROM_SZ, N>(rom_addr, hex_file));
   #endif
+
+  TAP(fetch);
 
   return q;
 }
@@ -135,11 +147,21 @@ void Fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
 
   word_t pc;
 
-  node imem_bubble, stall(Lit(0));
-
+  node imem_bubble;
   #ifdef STALL_SIGNAL
-  stall = _(out_buf, "stall") || imem_bubble;
+  node stall = _(out_buf, "stall") || imem_bubble;
   #endif
+
+  node next_ldpc_pending, ldpc_pending(Reg(next_ldpc_pending));
+  Cassign(next_ldpc_pending).
+    IF(ldpc_pending && !stall, Lit(0)).
+    IF(_(in, "ldpc") && stall, Lit(1)).
+    ELSE(ldpc_pending);
+
+  word_t pending_ldpc_val(Wreg(_(in, "ldpc"), _(in, "val")));
+
+  TAP(ldpc_pending); TAP(pending_ldpc_val);
+
 
   #ifdef BTB
   node clear_bf, branch,
@@ -181,50 +203,57 @@ void Fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   // If we predicted a taken branch last cycle, give it a rest this cycle. The
   // execute stage depends on this in order to properly handle branch delay
   // slots.
+  //
+  // Branch mispredicts should also inhibit the predictor to avoid
+  // chained mispredicts.
   node bp_inhibit(Wreg(
     #ifdef STALL_SIGNAL
-    !stall,
+      !stall,
     #else
-    Lit(1),
+      Lit(1),
     #endif
-      _(out_buf, "bp_valid") && _(out_buf, "bp_predict_taken")
+      _(out_buf, "bp_valid") && _(out_buf, "bp_predict_taken") ||
+      _(in, "ldpc") || ldpc_pending
   ));
   TAP(bp_inhibit);
 
-  TAP(btb_in); TAP(btb_out); TAP(pc); TAP(clear_bf);
+  TAP(btb_in); TAP(btb_out); TAP(clear_bf);
   #endif
 
-  node next_ldpc_pending, ldpc_pending(Reg(next_ldpc_pending));
-  Cassign(next_ldpc_pending).
-    IF(ldpc_pending && !imem_bubble, Lit(0)).
-    IF(_(in, "ldpc") && imem_bubble, Lit(1)).
-    ELSE(ldpc_pending);
-
-  word_t pending_ldpc_val(Wreg(_(in, "ldpc"), _(in, "val")));
-
   word_t next_pc;
-  pc = Wreg(!imem_bubble, next_pc, initial_pc);
+  pc = Reg(next_pc, initial_pc);
   Cassign(next_pc).
-    IF(_(in, "ldpc"), _(in, "val")).
-    IF(ldpc_pending, pending_ldpc_val).
+    IF(!stall && _(in, "ldpc"), _(in, "val")).
     #ifdef STALL_SIGNAL
     IF(stall, pc).
     #endif
+    IF(!stall && ldpc_pending, pending_ldpc_val).
     #ifdef BTB
     IF(_(out_buf, "bp_valid") && _(out_buf, "bp_predict_taken"),
       _(out_buf, "bp_pc")).
     #endif
     ELSE(pc + LitW(N/8));
 
+  node fetch_enable(
+    Lit(1)
+    #ifdef STALL_SIGNAL
+     && !stall
+    #endif
+  );
+
+  TAP(pc);
+  TAP(next_pc);
+
   _(out, "next_pc") = next_pc;
   _(out, "pc") = pc;
 
+  _(out, "valid") = Lit(1);
+
   #ifdef STALL_SIGNAL
   out_buf = Wreg(!stall, Flatten(out));
-  _(out_buf, "valid") = !stall;
+  _(out_buf, "valid") = Reg(_(out, "valid")) && !stall;
   #else
   out_buf = Reg(Flatten(out));
-  _(out_buf, "valid") = !imem_bubble;
   #endif
 
   #ifdef BTB
@@ -235,15 +264,10 @@ void Fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   _(out_buf, "bp_pc") = _(btb_out, "next_pc");
   #endif
 
-  node fetch_enable(
-    Lit(1)
-    #ifdef STALL_SIGNAL
-    && !stall
-    #endif
-  );
   _(out_buf, "inst") = InstMem(imem_bubble, pc, fetch_enable, hex_file);
 
   TAP(imem_bubble);
+  TAP(fetch_enable);
 
   HIERARCHY_EXIT();
 }
@@ -847,7 +871,7 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
 
   node muldiv_stall = (mfhi || mflo) && mul_busy || div_busy;
 
-  TAP(mul_out); TAP(mul_a); TAP(mul_b); TAP(start_mul); TAP(muldiv_stall);
+  TAP(mul_out); TAP(mul_a); TAP(mul_b); TAP(start_mul);
   #endif
 
   #ifdef SCOREBOARD
@@ -893,7 +917,6 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   TAP(check_scoreboard_1);
   TAP(check_scoreboard_1_idx);
   TAP(stall_scoreboard_1);
-  TAP(stall_scoreboard_dest);
   #endif
 
   #ifdef STALL_SIGNAL
@@ -908,8 +931,6 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
     stall_scoreboard_0 || stall_scoreboard_1 || stall_scoreboard_dest ||
     #endif
     Lit(0);
-
-  
 
   stall = _(out_buf, "stall") || gen_stall;
   #endif
@@ -1087,8 +1108,7 @@ void SimpleMem(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
 #endif
 
 void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
-         const char *hex_file, bool &stop_sim, unsigned core_id)
-{
+         const char *hex_file, bool &stop_sim, unsigned core_id) {
   HIERARCHY_ENTER();
 
   const unsigned B(N/8), BB(CLOG2(B));
@@ -1366,9 +1386,9 @@ word_t InfoRom(bvec<4> a, unsigned core_id) {
   #endif
 
   word_t q;
-  Cassign(q).                            // InfoRom Contents:
-    IF(a == Lit<4>(0x0), LitW(ovec)).    //   0x00: Options vector
-    IF(a == Lit<4>(0x1), LitW(core_id)). //   0x04: Core ID
+  Cassign(q).
+    IF(a == Lit<4>(0), LitW(ovec)).     // 00 - Options vector
+    IF(a == Lit<4>(1), LitW(core_id)).  // 04 - Core ID
     ELSE(LitW(0));
 
   return q;
