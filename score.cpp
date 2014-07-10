@@ -86,7 +86,7 @@ int main(int argc, char** argv) {
 
   optimize();
 
-  ofstream cpr("score.cp");
+  ofstream cpr("score.cpr");
   critpath_report(cpr);
 
   #ifdef SIMULATE
