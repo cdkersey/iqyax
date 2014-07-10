@@ -777,7 +777,7 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
          #endif
        ),
        bp_wrong_target(((in_valid && _(in, "bp_valid")) &&
-         (actual_next_pc != _(in, "bp_pc") && !bp_mispredict_t &&
+         (taken_dest != _(in, "bp_pc") && !bp_mispredict_t &&
          !bp_mispredict_nt)) && ((_(in, "bp_branch") && _(out_pc, "branch")) &&
 	 (_(in, "bp_predict_taken")
          #ifdef STALL_SIGNAL
@@ -969,7 +969,11 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
     ELSE(div_sel);
 
   #ifdef ONE_CYC_MUL
+  #ifdef FPGA_MUL
+  Module("mul64").outputs(mul_out).inputs(mul_a)(mul_b)(bvec<1>(start_mul));
+  #else
   mul_out = Wreg(start_mul, mul_a * mul_b);
+  #endif
   mul_busy = Lit(0);
   #else
   mul_out = SerialMul(mul_busy, mul_a, mul_b, start_mul);
@@ -1072,7 +1076,7 @@ vec<N/8, bvec<8> > InternalMem(word_t a_in, vec<N/8, bvec<8> > d, bvec<N/8> wr,
 {
   const unsigned B(N/8), BB(CLOG2(N/8));
 
-  word_t a(Reg(a_in));
+  word_t a(a_in);
   vec<B, bvec<8> > q;
   bvec<RAM_SZ> sram_addr(a_in[range<BB, BB + RAM_SZ - 1>()]);
   bvec<IROM_SZ> rom_addr(a_in[range<BB, BB + IROM_SZ - 1>()]);
@@ -1092,10 +1096,10 @@ vec<N/8, bvec<8> > InternalMem(word_t a_in, vec<N/8, bvec<8> > d, bvec<N/8> wr,
   for (unsigned i = 0; i < N/8; ++i) {
     Cassign(q[i]).
       #ifdef MAP_ROM_COPY
-      IF(a >= LitW(0x400000) && a < LitW(0x500000), irom_q[i]).
+      IF(Reg(a >= LitW(0x400000) && a < LitW(0x500000)), irom_q[i]).
       #endif
       #ifdef INFO_ROM
-      IF(a >= LitW(0x88000000) && a < LitW(0x88000010), inforom_q[i]).
+      IF(Reg(a >= LitW(0x88000000) && a < LitW(0x88000010)), inforom_q[i]).
       #endif
       ELSE(Syncmem(sram_addr, d[i], wr[i]));
   }
