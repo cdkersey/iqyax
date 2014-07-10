@@ -4,8 +4,10 @@
 #include <chdl/ag.h>
 #include <chdl/chdl.h>
 
-#define DELAYED_BRANCH
+#define SIMULATE
+// #define SYNTHESIZE
 
+#define DELAYED_BRANCH
 
 #define MUL_DIV
 // #define ONE_CYC_MUL
@@ -24,7 +26,7 @@
 // #define INST_ROM
 #define SST_IMEM
 
-#define SHOW_PC
+// #define SHOW_PC
 
 // #define SCOREBOARD // These can be enabled manually but are also enabled
 // #define MSHR       // automatically as needed.
@@ -47,8 +49,8 @@
 #endif
 
 namespace s_core {
-  const bool SOFT_IO(true), DEBUG_MEM(true);
-  const unsigned N(32), IROM_SZ(10), RAM_SZ(20), MSHR_SZ(8);
+  const bool SOFT_IO(true), FPGA_IO(false), DEBUG_MEM(false);
+  const unsigned N(32), IROM_SZ(10), RAM_SZ(10), MSHR_SZ(8);
   const chdl::cycle_t TMAX(100000);
 
   #ifdef BTB

@@ -89,11 +89,21 @@ int main(int argc, char** argv) {
   ofstream cpr("score.cp");
   critpath_report(cpr);
 
+  #ifdef SIMULATE
   #ifdef SST_MEM
   chdl_sst_sim_run(stop_sim, (argc >= 2 ? argv[1] : "score.hex"), TMAX);
   #else
   ofstream vcd("score.vcd");
   run(vcd, stop_sim, TMAX);
+  #endif
+  #endif
+
+  #ifdef SYNTHESIZE
+  ofstream vl("score.v");
+  print_verilog("score", vl);
+
+  ofstream nand("score.nand");
+  print_netlist(nand);
   #endif
 
   return 0;
@@ -1320,6 +1330,13 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
     }, wrChar);
 
     Egress(stop_sim, stopSimNode);
+  }
+
+  if (FPGA_IO) {
+    node strobe(_(in, "mem_wr") && _(in, "addr") == LitW((1ul<<(N-1))+N/4));
+    OUTPUT(strobe);
+    bvec<7> val(_(in, "result")[range<0,6>()]);
+    OUTPUT(val);
   }
 
   if (DEBUG_MEM) {
