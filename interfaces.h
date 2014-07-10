@@ -26,6 +26,8 @@
 // #define INST_ROM
 #define SST_IMEM
 
+#define TRISTATE_ALU_MUX
+
 // #define SHOW_PC
 
 // #define SCOREBOARD // These can be enabled manually but are also enabled
@@ -100,6 +102,14 @@ namespace s_core {
           chdl::ag<STP("mem_rd"), chdl::node,
           chdl::ag<STP("mem_wr"), chdl::node,
           chdl::ag<STP("mem_byte"), chdl::node,
+          chdl::ag<STP("j"), chdl::node,
+          chdl::ag<STP("jr"), chdl::node,
+          chdl::ag<STP("beq"), chdl::node,
+          chdl::ag<STP("bne"), chdl::node,
+          chdl::ag<STP("bgez"), chdl::node,
+          chdl::ag<STP("bltz"), chdl::node,
+          chdl::ag<STP("blez"), chdl::node,
+          chdl::ag<STP("bgtz"), chdl::node,
           chdl::ag<STP("jal"), chdl::node,
           chdl::ag<STP("next_pc"), word_t,
           chdl::ag<STP("pc"), word_t
@@ -122,7 +132,7 @@ namespace s_core {
           #ifdef LLSC
           >
           #endif
-  > > > > > > > > > > > > > > > > > decode_reg_t;
+  > > > > > > > > > > > > > > > > > > > > > > > > > decode_reg_t;
 
   // Signals from register stage to execute stage
   typedef chdl::ag<STP("valid"), chdl::node,
@@ -141,6 +151,14 @@ namespace s_core {
           chdl::ag<STP("mem_rd"), chdl::node,
           chdl::ag<STP("mem_wr"), chdl::node,
           chdl::ag<STP("mem_byte"), chdl::node,
+          chdl::ag<STP("j"), chdl::node,
+          chdl::ag<STP("jr"), chdl::node,
+          chdl::ag<STP("beq"), chdl::node,
+          chdl::ag<STP("bne"), chdl::node,
+          chdl::ag<STP("bgez"), chdl::node,
+          chdl::ag<STP("bltz"), chdl::node,
+          chdl::ag<STP("blez"), chdl::node,
+          chdl::ag<STP("bgtz"), chdl::node,
           chdl::ag<STP("jal"), chdl::node,
           chdl::ag<STP("next_pc"), word_t,
           chdl::ag<STP("pc"), word_t
@@ -163,7 +181,7 @@ namespace s_core {
           #ifdef LLSC
           >
           #endif
-  > > > > > > > > > > > > > > > > > > > reg_exec_t;
+  > > > > > > > > > > > > > > > > > > > > > > > > > > > reg_exec_t;
 
   // Signals from execute to fetch stage (branch mispredict)
   typedef chdl::ag<STP("ldpc"), chdl::node,

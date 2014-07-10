@@ -54,7 +54,6 @@ void SimpleCore(const char *hex_file, unsigned initial_pc, bool &stop_sim,
   exec_fetch_t exec_fetch;
   mem_reg_t mem_reg;
   mem_exec_t mem_exec;
-
                                                                   // Pipeline:
   Fetch(fetch_decode, exec_fetch, hex_file, initial_pc);          //   STAGE 1
   Decode(decode_reg, fetch_decode);                               //   STAGE 2
@@ -130,6 +129,7 @@ template <unsigned M, unsigned N> bvec<M> Fold(bvec<N> in) {
 #endif
 
 word_t InstMem(node &bubble, word_t addr, node fetch, const char* hex_file) {
+  HIERARCHY_ENTER();
   word_t q;
 
   #ifdef INST_ROM
@@ -176,6 +176,8 @@ word_t InstMem(node &bubble, word_t addr, node fetch, const char* hex_file) {
   #endif
 
   TAP(fetch);
+
+  HIERARCHY_EXIT();
 
   return q;
 }
@@ -410,6 +412,16 @@ void Decode(decode_reg_t &out, fetch_decode_t &in) {
       opcode == Lit<6>(0x28) || // sb
       opcode == Lit<6>(0x2b) );   // sw
 
+  _(out, "j") = opcode == Lit<6>(0x02) || opcode == Lit<6>(0x03);
+  _(out, "jr") = opcode == Lit<6>(0x00) && func == Lit<6>(0x08);
+  _(out, "beq") = opcode == Lit<6>(0x04);
+  _(out, "bne") = opcode == Lit<6>(0x05);
+  _(out, "bgez") = opcode == Lit<6>(0x01) &&
+    (func == Lit<6>(0x01) || func == Lit<6>(0x11));
+  _(out, "bltz") = opcode == Lit<6>(0x01) && func == Lit<6>(0x10);
+  _(out, "blez") = opcode == Lit<6>(0x06) && func == Lit<6>(0x00);
+  _(out, "bgtz") = opcode == Lit<6>(0x07) && func == Lit<6>(0x00);
+
   _(out, "jal") =
     opcode == Lit<6>(0x03) ||    // jal
     opcode == Lit<6>(0x01) && (
@@ -524,6 +536,14 @@ void Reg(reg_exec_t &out_buf, decode_reg_t &in, mem_reg_t &in_wb) {
   _(out, "op") = _(in, "op");
   _(out, "func") = _(in, "func");
   _(out, "valid") = _(in, "valid");
+  _(out, "j") = _(in, "j");
+  _(out, "jr") = _(in, "jr");
+  _(out, "beq") = _(in, "beq");
+  _(out, "bne") = _(in, "bne");
+  _(out, "bgez") = _(in, "bgez");
+  _(out, "bltz") = _(in, "bltz");
+  _(out, "blez") = _(in, "blez");
+  _(out, "bgtz") = _(in, "bgtz");
   _(out, "jal") = _(in, "jal");
   _(out, "mem_byte") = _(in, "mem_byte");
   _(out, "imm") = _(in, "imm");
@@ -640,27 +660,40 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   TAP(trap_pc);
   #endif
 
+  hierarchy_enter("branch");
+
+  hierarchy_enter("val_compare");
+  node vals_eq(val0 == val1), vals_neq(!vals_eq),
+       val_ltz(val0[N-1]), val_lez(val_ltz || !OrN(val0)), val_gez(!val_ltz),
+       val_gtz(!val_lez);
+  hierarchy_exit();
+
+  // Hand-optimized associativity. Working on a better associative operation
+  // optimization for CHDL. 
+  node taken(
+    ((_(in, "beq") && vals_eq ||
+      _(in, "bne") && vals_neq) ||
+     (_(in, "bltz") && val_ltz ||
+      _(in, "blez") && val_lez)) ||
+    ((_(in, "bgez") && val_gez ||
+      _(in, "bgtz") && val_gtz) ||
+     (_(in, "j") || _(in, "jr")))
+  );
+
+  word_t taken_dest;
+  Cassign(taken_dest).
+    IF(_(in, "jr"), val0).
+    IF(_(in, "j"), jdest).
+    ELSE(bdest);
+
+  TAP(vals_eq); TAP(vals_neq); TAP(val_lez); TAP(val_ltz); TAP(val_gtz);
+  TAP(val_gez); TAP(taken_dest); TAP(taken);
+
+  hierarchy_exit();
+
+  // TODO: support for trap/eret
   Cassign(actual_next_pc).
-    #ifdef TRAP
-    IF(trap, trap_entry). // trap
-    IF(op == Lit<6>(0x10) && func == Lit<6>(0x18), trap_pc). // eret
-    #endif
-    IF(op == Lit<6>(0x02) || op == Lit<6>(0x03), jdest). // j, jal
-    IF(op == Lit<6>(0x00) && func == Lit<6>(0x08), val0). // jr
-    IF(op == Lit<6>(0x04) && val0 == val1, bdest). // beq
-    IF(op == Lit<6>(0x05) && val0 != val1, bdest). // bne
-    IF(op == Lit<6>(0x01)).
-      IF(func == Lit<6>(0x01) && !val0[N-1], bdest). // bgez
-      IF(func == Lit<6>(0x10) && val0[N-1], bdest). // bltzal
-      IF(func == Lit<6>(0x11) && !val0[N-1], bdest). // bgezal
-      ELSE(pc + LitW(4)).
-    END().IF(op == Lit<6>(0x06)).
-      IF(func == Lit<6>(0x00) && (!OrN(val0) || val0[N-1]), bdest). // blez
-      ELSE(pc + LitW(4)).
-    END().IF(op == Lit<6>(0x07)).
-      IF(func == Lit<6>(0x00) && OrN(val0) && !val0[N-1], bdest). // bgtz
-      ELSE(pc + LitW(4)).
-    END().
+    IF(taken, taken_dest).
     ELSE(pc + LitW(4));
 
   // When a branch is mispredicted, the next two inputs are to be considered
@@ -674,9 +707,7 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   #endif
   in_valid = _(in, "valid") && !bubble;
 
-  node branch_mispredict(in_valid && next_pc != actual_next_pc),
-       branch_taken(in_valid && (_(in, "pc")+LitW(4)) != actual_next_pc);
-  TAP(branch_mispredict);
+  node branch_taken(in_valid && taken);
   TAP(branch_taken);
 
   #ifdef BTB
@@ -726,7 +757,6 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
     END().
     ELSE(Lit<2>(1));
 
-  // TODO: rename the original branch_mispredict
   node bp_failure_to_predict(in_valid && !_(in, "bp_valid") && branch_taken),
        bp_false_positive(in_valid && _(in, "bp_valid") &&
          _(in, "bp_predict_taken") && !_(out_pc, "branch")
@@ -746,14 +776,14 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
          && !stall
          #endif
        ),
-       bp_wrong_target(in_valid && _(in, "bp_valid") &&
-         actual_next_pc != _(in, "bp_pc") && !bp_mispredict_t &&
-         !bp_mispredict_nt && _(in, "bp_branch") && _(out_pc, "branch") &&
-         _(in, "bp_predict_taken")
+       bp_wrong_target(((in_valid && _(in, "bp_valid")) &&
+         (actual_next_pc != _(in, "bp_pc") && !bp_mispredict_t &&
+         !bp_mispredict_nt)) && ((_(in, "bp_branch") && _(out_pc, "branch")) &&
+	 (_(in, "bp_predict_taken")
          #ifdef STALL_SIGNAL
          && !stall
          #endif
-       );
+       )));
 
   Counter("failure_to_predict", bp_failure_to_predict);
   Counter("mispredict_t", bp_mispredict_t);
@@ -778,11 +808,11 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   #endif
   #ifdef BTB
     IF(bubble_ctr == Lit<2>(0) &&
-        (bp_mispredict_t || bp_mispredict_nt || bp_wrong_target ||
-           bp_failure_to_predict || bp_false_positive),
+       ((bp_mispredict_t || bp_mispredict_nt || bp_wrong_target) ||
+	(bp_failure_to_predict || bp_false_positive)),
           Lit<2>(2)).
   #else
-    IF(branch_mispredict, Lit<2>(2)).
+    IF(branch_taken, Lit<2>(2)).
   #endif
     IF(bubble_ctr == Lit<2>(0), Lit<2>(0)).
     ELSE(bubble_ctr - Lit<2>(1));    
@@ -818,7 +848,7 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
     IF(bp_mispredict_t || bp_false_positive, _(in, "pc") + LitW(2*N/8)).
     ELSE(actual_next_pc);
   #else
-  _(out_pc, "ldpc") = branch_mispredict;
+  _(out_pc, "ldpc") = branch_taken;
   _(out_pc, "val") = actual_next_pc;
   #endif
 
@@ -826,6 +856,44 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   word_t hi, lo;
   #endif
 
+  #ifdef TRISTATE_ALU_MUX
+  bvec<64> op1h(Decoder(op)), func1h(Decoder(func));
+
+  bus<N> aluout;
+  aluout.connect(pc + LitW(2*N/8), _(in, "jal"));
+  aluout.connect(val1, _(in, "mem_wr"));
+  aluout.connect(val1 << Zext<CLOG2(N)>(imm), op1h[0] && func1h[0]); // sll
+  aluout.connect(val1 >> Zext<CLOG2(N)>(imm), op1h[0] && func1h[2]); // srl
+  aluout.connect(Shifter(val1, Zext<CLOG2(N)>(imm), Lit(1), Lit(0), Lit(1)),
+    op1h[0] && func1h[3]); // sra
+  aluout.connect(val1 << Zext<CLOG2(N)>(val0), op1h[0] && func1h[4]); // sllv
+  aluout.connect(val1 >> Zext<CLOG2(N)>(val0), op1h[0] && func1h[6]); // srlv
+  aluout.connect(Shifter(val1, Zext<CLOG2(N)>(val0), Lit(1), Lit(0), Lit(1)),
+    op1h[0] && func1h[7]); // srav
+  #ifdef MUL_DIV
+  aluout.connect(hi, op1h[0] && func1h[0x10]); // mfhi
+  aluout.connect(lo, op1h[0] && func1h[0x12]); // mflo
+  #endif
+  aluout.connect(val0+val1, op1h[0] && (func1h[0x20]||func1h[0x21])); // add(u)
+  aluout.connect(val0-val1, op1h[0] && (func1h[0x22]||func1h[0x23])); // sub(u)
+  aluout.connect(val0 & val1, op1h[0] && func1h[0x24]); // and
+  aluout.connect(val0 | val1, op1h[0] && func1h[0x25]); // or
+  aluout.connect(val0 ^ val1, op1h[0] && func1h[0x26]); // xor
+  aluout.connect(Cat(Lit<N-1>(0), (val0 - val1)[N - 1]),
+    op1h[0] && func1h[0x2a]); // slt
+  aluout.connect(Cat(Lit<N-1>(0), Zext<N+1>(val0) < Zext<N+1>(val1)),
+    op1h[0] && func1h[0x2b]); // sltu
+  aluout.connect(val0 + imm, op1h[0x08] || op1h[0x09]); // addi
+  aluout.connect(Cat(Lit<N-1>(0), (val0 - imm)[N-1]), op1h[0x0a]); // slti
+  aluout.connect(Cat(Lit<N-1>(0), Zext<N+1>(val0) < Zext<N+1>(imm)),
+    op1h[0x0b]); // sltiu
+  aluout.connect(val0 & imm, op1h[0x0c]); // andi
+  aluout.connect(val0 | imm, op1h[0x0d]); // ori
+  aluout.connect(val0 ^ imm, op1h[0x0e]); // xori
+  aluout.connect(Cat(Zext<16>(imm), Lit<N-16>(0)), op1h[0x0f]); // lui
+
+  _(out, "result") = aluout;
+  #else
   Cassign(_(out, "result")).
     IF(_(in, "jal"), pc + LitW(2*N/8)). // jump/branch and link
     IF(_(in, "mem_wr"), val1). // Store
@@ -863,6 +931,7 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
     IF(op == Lit<6>(0x0e), val0 ^ imm). // xori
     IF(op == Lit<6>(0x0f), Cat(Zext<16>(imm), Lit<N-16>(0))). // lui
     ELSE(LitW(0));
+  #endif
 
   _(out, "pc") = pc; // For debugging purposes.
 

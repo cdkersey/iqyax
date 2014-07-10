@@ -1,4 +1,4 @@
-CXXFLAGS = -std=c++11
+CXXFLAGS = -std=c++11 -g
 LDLIBS = -lchdl
 
 #score.vcd : score score.hex
