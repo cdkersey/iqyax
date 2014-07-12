@@ -4,16 +4,17 @@
 #include <chdl/ag.h>
 #include <chdl/chdl.h>
 
-// #define SIMULATE
-#define SYNTHESIZE
+#define SIMULATE
+// #define SYNTHESIZE
 
 #define DELAYED_BRANCH
 
 #define MUL_DIV
-#define ONE_CYC_MUL
-#define FPGA_MUL
+// #define ONE_CYC_MUL
+// #define FPGA_MUL
 #define BTB
 #define TRAP
+#define SRAM_REGS
 
 // #define RANDOM_STALL
 // #define INST_ROM_SIMULATE_ICACHE_MISS
@@ -52,8 +53,8 @@
 #endif
 
 namespace s_core {
-  const bool SOFT_IO(false), FPGA_IO(true), DEBUG_MEM(false);
-  const unsigned N(32), IROM_SZ(10), RAM_SZ(10), MSHR_SZ(8);
+  const bool SOFT_IO(true), FPGA_IO(true), DEBUG_MEM(false);
+  const unsigned N(32), IROM_SZ(10), RAM_SZ(20), MSHR_SZ(8);
   const chdl::cycle_t TMAX(100000);
 
   #ifdef BTB

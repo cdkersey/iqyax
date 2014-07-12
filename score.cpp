@@ -505,6 +505,17 @@ void Reg(reg_exec_t &out_buf, decode_reg_t &in, mem_reg_t &in_wb) {
   HIERARCHY_ENTER();
   reg_exec_t out;
 
+  #ifdef SRAM_REGS
+  vec<2, rname_t> r_idx;
+  r_idx[0] = _(in, "rsrc0_idx");
+  r_idx[1] = _(in, "rsrc1_idx");
+
+  vec<2, word_t> reg_q;
+  word_t rval0(reg_q[0]), rval1(reg_q[1]);
+  
+  reg_q = Syncmem(r_idx, _(in_wb, "result"),
+                  _(in_wb, "rdest_idx"), _(in_wb, "rdest_valid"));
+  #else
   // These are expensive to implement as Regs instead of as a multi-port SRAM,
   // but this enables constant inspection of all register values.
   bvec<32> wr(Decoder(_(in_wb, "rdest_idx"), _(in_wb, "rdest_valid")));
@@ -512,16 +523,19 @@ void Reg(reg_exec_t &out_buf, decode_reg_t &in, mem_reg_t &in_wb) {
   for (unsigned i = 0; i < 32; ++i)
     regs[i] = Wreg(wr[i], _(in_wb, "result"));
   TAP(regs);
+  word_t rval0(Mux(_(in, "rsrc0_idx"), regs)),
+         rval1(Mux(_(in, "rsrc1_idx"), regs));
 
   Cassign(_(out, "val0")).
     IF(_(in, "rsrc0_idx") == _(in_wb, "rdest_idx") && _(in_wb, "rdest_valid"),
-      _(in_wb, "result")).
-    ELSE(Mux(_(in, "rsrc0_idx"), regs));
+      _(in_wb, "result")) .
+    ELSE(rval0);
 
   Cassign(_(out, "val1")).
     IF(_(in, "rsrc1_idx") == _(in_wb, "rdest_idx") && _(in_wb, "rdest_valid"),
       _(in_wb, "result")).
-    ELSE(Mux(_(in, "rsrc1_idx"), regs));
+    ELSE(rval1);
+  #endif
 
   _(out, "pc") = _(in, "pc");
   _(out, "next_pc") = _(in, "next_pc");
@@ -567,6 +581,28 @@ void Reg(reg_exec_t &out_buf, decode_reg_t &in, mem_reg_t &in_wb) {
 
   #ifdef LLSC
   _(out, "llsc") = _(in, "llsc");
+  #endif
+
+  #ifdef SRAM_REGS
+  #ifdef STALL_SIGNAL
+  Cassign(_(out_buf, "val0")).
+    IF(Wreg(!_(in, "stall"), _(in, "rsrc0_idx") == _(in_wb, "rdest_idx") && _(in_wb, "rdest_valid")),
+      Wreg(!_(in, "stall"), _(in_wb, "result"))).
+    ELSE(Latch(Reg(_(in, "stall")), rval0));
+
+  Cassign(_(out_buf, "val1")).
+    IF(Wreg(!_(in, "stall"), _(in, "rsrc1_idx") == _(in_wb, "rdest_idx") && _(in_wb, "rdest_valid")),
+      Wreg(!_(in, "stall"), _(in_wb, "result"))).
+    ELSE(Latch(Reg(_(in, "stall")), rval1));
+  #else
+  Cassign(_(out_buf, "val0")).
+    IF(Reg(_(in, "rsrc0_idx") == _(in_wb, "rdest_idx") && _(in_wb, "rdest_valid")), _(in_wb, "result")).
+    ELSE(rval0);
+
+  Cassign(_(out_buf, "val0")).
+    IF(Reg(_(in, "rsrc0_idx") == _(in_wb, "rdest_idx") && _(in_wb, "rdest_valid")), _(in_wb, "result")).
+    ELSE(rval0);
+  #endif
   #endif
 
   HIERARCHY_EXIT();
