@@ -1,20 +1,24 @@
 #ifndef SCORE_INTERFACES_H
 #define SCORE_INTERFACES_H
 
+#include <sstream>
+
 #include <chdl/ag.h>
 #include <chdl/chdl.h>
 
-#define SIMULATE
-// #define SYNTHESIZE
+// #define SIMULATE
+#define SYNTHESIZE
 
 #define DELAYED_BRANCH
 
 #define MUL_DIV
 // #define ONE_CYC_MUL
 // #define FPGA_MUL
-#define BTB
+// #define BTB
 #define TRAP
 #define SRAM_REGS
+
+#define FPGA_ARITH
 
 // #define RANDOM_STALL
 // #define INST_ROM_SIMULATE_ICACHE_MISS
@@ -52,9 +56,56 @@
 #define SCOREBOARD
 #endif
 
+const unsigned N(32);
+
+#ifdef FPGA_ARITH
+class word_t : public chdl::bvec<N> {
+public:
+  word_t(const chdl::bvec<N> &x): chdl::bvec<N>(x) {}
+  word_t(): chdl::bvec<N>() {}
+
+  word_t &operator=(const chdl::bvec<N> &r) { *this = word_t(r); }
+
+  operator chdl::bvec<N>() { return *this; }
+};
+
+word_t LitW(unsigned n) { return word_t(chdl::Lit<N>(n)); }
+
+namespace chdl {
+  template <> struct sz<word_t> { const static unsigned value = N; }; 
+} 
+
+word_t operator+(word_t a, word_t b) {
+  std::ostringstream name;
+  name << "adder" << N;
+    
+  chdl::bvec<N> r;
+  chdl::Module(name.str()).outputs(r).inputs(a)(b);
+
+  return r;
+}
+
+word_t operator-(word_t a, word_t b) {
+  return a + word_t(-chdl::bvec<N>(b));
+}
+
+word_t operator*(word_t a, word_t b) {
+  std::ostringstream name;
+  name << "mult" << N;
+    
+  chdl::bvec<N> r;
+  chdl::Module(name.str()).outputs(r).inputs(a)(b);
+
+  return r;
+}
+#else
+typedef chdl::bvec<N> word_t;
+static word_t LitW(unsigned long x) { return chdl::Lit<N>(x); }
+#endif
+
 namespace s_core {
-  const bool SOFT_IO(true), FPGA_IO(true), DEBUG_MEM(false);
-  const unsigned N(32), IROM_SZ(10), RAM_SZ(20), MSHR_SZ(8);
+  const bool SOFT_IO(false), FPGA_IO(true), DEBUG_MEM(false);
+  const unsigned IROM_SZ(10), RAM_SZ(10), MSHR_SZ(8);
   const chdl::cycle_t TMAX(100000);
 
   #ifdef BTB
@@ -64,10 +115,7 @@ namespace s_core {
   typedef chdl::bvec<5> rname_t;
   typedef chdl::bvec<6> opcode_t;
   typedef chdl::bvec<6> func_t;
-  typedef chdl::bvec<N> word_t;
   typedef chdl::bvec<N> inst_t;
-
-  static word_t LitW(unsigned long x) { return chdl::Lit<N>(x); }
 
   // Signals from instruction fetch to decoder
   typedef chdl::ag<STP("valid"), chdl::node,

@@ -8,6 +8,7 @@ SimpleCore
     0.0 - Table of Contents
     0.1 - Introduction
   1 - Getting Started
+  2 - Preliminary Performance Results
 
 0.1 - Introduction
 ------------------
@@ -18,3 +19,36 @@ C++ hardware design library.
 1 - Getting Started
 -------------------
 
+2 - Preliminary Performance Results
+-----------------------------------
+
+The following results were obtained with Altera Quartus Web Edition Version 13.0
+and a Terasic DE-2 board with an Altera Cyclone FPGA.
+
+SRAM_REGS BTB FPGA_MUL 3st_ALU_MUX | Gates  Critpath  LEs  Regs  SRAM_b  Fmax
+-----------------------------------+--------------------------------------------
+   No     No    No         No      | 40405        83 8043  1827   61664 50.89
+   No     No    No        Yes      | 38191        57 7893  1827   61664 63.69
+   No     No    No        Yes   *  | 35677        57 7536  1727   61664 62.64
+   No     No   Yes         No      | 30817        78 6166  1709   61664 49.01
+   No     No   Yes        Yes      | 28603        57 6050  1709   61664 50.20
+   No    Yes    No         No      | 50220        83 9212  2066   62784 51.31
+   No    Yes    No        Yes      | 48016        66 9180  2066   62784 58.68
+   No    Yes   Yes         No      | 40632        78 7454  1948   62784 48.40
+   No    Yes   Yes        Yes      | 38428        62 7325  1948   62784 49.67
+  Yes     No    No         No      | 30727        83 6150   837   63712 48.55
+  Yes     No    No        Yes      | 27513        57 6148   837   63712 61.29
+  Yes     No    No        Yes   *  | 25999        57 5769   837   63712 61.95
+  Yes     No   Yes         No      | 21139        78 4408   719   63712 46.94
+  Yes     No   Yes        Yes      | 18925        57 4322   719   64832 47.04
+  Yes    Yes    No         No      | 40542        83 7315  1076   64832 48.10
+  Yes    Yes    No        Yes      | 38338        66 7264  1076   64832 57.99
+  Yes    Yes   Yes         No      | 30954        78 5550   958   64832 47.79
+  Yes    Yes   Yes        Yes      | 28750        62 5328   958   64832 47.21
+
+* - Using FPGA_ARITH
+
+SRAM_REGS mean off/on: 52.7/50.6
+BTB mean off/on: 52.2/51.1
+FPGA_MUL mean off/on: 55.1/48.3
+3st_ALU_MUX mean off/on: 54.5/48.9

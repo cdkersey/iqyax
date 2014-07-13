@@ -84,6 +84,7 @@ int main(int argc, char** argv) {
   if (cycdet()) { cerr << "Error: Cycle detected.\n"; return 1; }
 
   optimize();
+  opt_assoc_balance();
 
   ofstream cpr("score.cpr");
   critpath_report(cpr);
@@ -523,8 +524,9 @@ void Reg(reg_exec_t &out_buf, decode_reg_t &in, mem_reg_t &in_wb) {
   for (unsigned i = 0; i < 32; ++i)
     regs[i] = Wreg(wr[i], _(in_wb, "result"));
   TAP(regs);
-  word_t rval0(Mux(_(in, "rsrc0_idx"), regs)),
-         rval1(Mux(_(in, "rsrc1_idx"), regs));
+  vec<32, bvec<N> > regs_bv(regs);
+  word_t rval0(Mux(_(in, "rsrc0_idx"), regs_bv)),
+         rval1(Mux(_(in, "rsrc1_idx"), regs_bv));
 
   Cassign(_(out, "val0")).
     IF(_(in, "rsrc0_idx") == _(in_wb, "rdest_idx") && _(in_wb, "rdest_valid"),
