@@ -27,9 +27,13 @@
 #endif
 
 #ifdef SST_MEM
-//#define SIM_
+#ifdef SIMULATE
+#define SIM_
+#endif
 #include "chdl-sst.h"
-//#undef SIM_
+#ifdef SIMULATE
+#undef SIM_
+#endif
 #endif
 
 using namespace std;
