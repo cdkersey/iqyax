@@ -27,9 +27,9 @@
 #endif
 
 #ifdef SST_MEM
-#define SIM_
+//#define SIM_
 #include "chdl-sst.h"
-#undef SIM_
+//#undef SIM_
 #endif
 
 using namespace std;
@@ -169,8 +169,8 @@ word_t InstMem(node &bubble, word_t addr, node fetch, const char* hex_file) {
   bubble = !(_(iMemResp, "valid") || pending || Reg(Lit(0), 1));
   q = _(_(iMemResp, "contents"), "data");
 
-  SimpleMemReqPort("1", iMemReq);
-  SimpleMemRespPort("1", iMemResp);
+  SimpleMemReqPort("i", iMemReq);
+  SimpleMemRespPort("i", iMemResp);
 
   TAP(iMemReq);
   TAP(iMemResp);
@@ -1170,8 +1170,8 @@ void SimpleMemSSTRam(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
   #endif
   ;
 
-  SimpleMemReqPort("0", memSysReq);
-  SimpleMemRespPort("0", memSysResp);
+  SimpleMemReqPort("d", memSysReq);
+  SimpleMemRespPort("d", memSysResp);
 
   // Responses to writes can be silently dropped.
   _(memSysResp, "ready") = _(resp, "ready");

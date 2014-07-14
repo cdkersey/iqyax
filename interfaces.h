@@ -12,9 +12,9 @@
 #define DELAYED_BRANCH
 
 #define MUL_DIV
-// #define ONE_CYC_MUL
-// #define FPGA_MUL
-// #define BTB
+#define ONE_CYC_MUL
+#define FPGA_MUL
+#define BTB
 #define TRAP
 #define SRAM_REGS
 
