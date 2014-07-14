@@ -6,13 +6,13 @@
 #include <chdl/ag.h>
 #include <chdl/chdl.h>
 
-// #define SIMULATE
-#define SYNTHESIZE
+#define SIMULATE
+// #define SYNTHESIZE
 
 #define DELAYED_BRANCH
 
 #define MUL_DIV
-// #define ONE_CYC_MUL
+#define ONE_CYC_MUL
 // #define FPGA_MUL
 #define BTB
 #define TRAP
@@ -27,6 +27,7 @@
 #define LLSC
 // #define INTERNAL_MEM
 // #define INFO_ROM
+#define MAP_COUNTERS
 
 #define MAP_ROM_COPY
 #define INST_ROM

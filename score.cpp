@@ -40,6 +40,8 @@ using namespace std;
 using namespace chdl;
 using namespace s_core;
 
+map<string, word_t> counters;
+
 void Fetch(fetch_decode_t &out, exec_fetch_t &in,
            const char *hex_file, unsigned initial_pc);
 void Decode(decode_reg_t &out, fetch_decode_t &in);
@@ -114,6 +116,7 @@ int main(int argc, char** argv) {
 }
 
 word_t InfoRom(bvec<4> a, unsigned core_id);
+word_t CounterMem(bvec<4> a);
 
 #ifdef BTB
 template <unsigned M, unsigned N> bvec<M> Fold(bvec<N> in) {
@@ -831,13 +834,13 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   Counter("mispredict_t", bp_mispredict_t);
   Counter("mispredict_nt", bp_mispredict_nt);
   Counter("bp_wrong_target", bp_wrong_target);
-  Counter("branches", _(out_pc, "branch")); 
+  counters["branches"] = Counter("branches", _(out_pc, "branch")); 
 
   TAP(bp_false_positive);
   #endif
 
-  Counter("cycles", Lit(1));
-  Counter("instructions", in_valid && !bubble
+  counters["cycles"] = Counter("cycles", Lit(1));
+  counters["instructions"] = Counter("instructions", in_valid && !bubble
   #ifdef STALL_SIGNAL
     && !_(in, "stall")
   #endif
@@ -1135,6 +1138,12 @@ vec<N/8, bvec<8> > InternalMem(word_t a_in, vec<N/8, bvec<8> > d, bvec<N/8> wr,
     for (unsigned j = 0; j < 8; ++j)
       inforom_q[i][j] = inforom_qw[i*8 + j];
 
+  word_t counter_qw(Reg(CounterMem(a_in[range<BB, BB+3>()])));
+  vec<B, bvec<8> > counter_q;
+  for (unsigned i = 0; i < B; ++i)
+    for (unsigned j = 0; j < 8; ++j)
+      counter_q[i][j] = counter_qw[i*8 + j];
+
   for (unsigned i = 0; i < N/8; ++i) {
     Cassign(q[i]).
       #ifdef MAP_ROM_COPY
@@ -1142,6 +1151,9 @@ vec<N/8, bvec<8> > InternalMem(word_t a_in, vec<N/8, bvec<8> > d, bvec<N/8> wr,
       #endif
       #ifdef INFO_ROM
       IF(Reg(a >= LitW(0x88000000) && a < LitW(0x88000010)), inforom_q[i]).
+      #endif
+      #ifdef MAP_COUNTERS
+      IF(Reg(a >= LitW(0x88000080) && a < LitW(0x88000100)), counter_q[i]).
       #endif
       ELSE(Syncmem(sram_addr, d[i], wr[i]));
   }
@@ -1239,6 +1251,32 @@ void SimpleMemInfoRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
   _(_(resp, "contents"), "id") = Wreg(fill, _(_(req, "contents"), "id"));
 }
 
+void SimpleMemCounters(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req)
+{
+  word_t addr(_(_(req, "contents"), "addr"));
+  bvec<4> ctr_addr(addr[range<CLOG2(N/8),CLOG2(N/8)+3>()]);
+
+  node valid = _(req, "valid") &&
+    (addr >= LitW(0x88000040) && addr < LitW(0x88000100));
+
+  node fill, empty, next_full, full(Reg(next_full));
+  Cassign(next_full).
+    IF(!full && fill && !empty, Lit(1)).
+    IF(full && empty && !fill, Lit(0)).
+    ELSE(full);
+
+  fill = valid;
+  empty = full && _(resp, "ready");
+
+  stall = full && !_(resp, "ready");
+  _(resp, "valid") = full;
+  _(_(resp, "contents"), "data") =
+    Wreg(fill, CounterMem(ctr_addr) >> 
+      Zext<CLOG2(N)>(Cat(addr[range<0,CLOG2(N/8)-1>()], Lit<3>(0)))
+    );
+  _(_(resp, "contents"), "id") = Wreg(fill, _(_(req, "contents"), "id"));
+}
+
 void SimpleMem(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
                const char *hex_file, unsigned core_id)
 {
@@ -1257,6 +1295,10 @@ void SimpleMem(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
 
   #ifdef INFO_ROM
   SimpleMemInfoRom(stallVec[2], respVec[2], req, core_id);
+  #endif
+
+  #ifdef MAP_COUNTERS
+  SimpleMemCounters(stallVec[3], respVec[3], req);
   #endif
 
   TAP(stallVec);
@@ -1556,6 +1598,17 @@ word_t InfoRom(bvec<4> a, unsigned core_id) {
   Cassign(q).
     IF(a == Lit<4>(0), LitW(ovec)).     // 00 - Options vector
     IF(a == Lit<4>(1), LitW(core_id)).  // 04 - Core ID
+    ELSE(LitW(0));
+
+  return q;
+}
+
+word_t CounterMem(bvec<4> a) {
+  word_t q;
+  Cassign(q).
+    IF(a == Lit<4>(0), counters["cycles"]).        // 00 - Cycles
+    IF(a == Lit<4>(1), counters["instructions"]).  // 04 - Instructions
+    IF(a == Lit<4>(2), counters["branches"]).      // 08 - Branches
     ELSE(LitW(0));
 
   return q;
