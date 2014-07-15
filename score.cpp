@@ -359,6 +359,7 @@ void Decode(decode_reg_t &out, fetch_decode_t &in) {
     opcode == Lit<6>(0x08) || // addi
     opcode == Lit<6>(0x09) || // addiu
     opcode == Lit<6>(0x20) || // lb
+    opcode == Lit<6>(0x24) || // lbu
     opcode == Lit<6>(0x23) || // lw
     opcode == Lit<6>(0x28) || // sb
     opcode == Lit<6>(0x2b);  //sw
@@ -380,6 +381,7 @@ void Decode(decode_reg_t &out, fetch_decode_t &in) {
       opcode == Lit<6>(0x0d) || // ori
       opcode == Lit<6>(0x0e) || // xori
       opcode == Lit<6>(0x20) || // lb
+      opcode == Lit<6>(0x24) || // lbu
       opcode == Lit<6>(0x23) || // lw
       opcode == Lit<6>(0x28) || // sb
       opcode == Lit<6>(0x2b));  // sw
@@ -408,6 +410,7 @@ void Decode(decode_reg_t &out, fetch_decode_t &in) {
       opcode == Lit<6>(0x0d) || // ori
       opcode == Lit<6>(0x0e) || // xori
       opcode == Lit<6>(0x20) || // lb
+      opcode == Lit<6>(0x24) || // lbu
       opcode == Lit<6>(0x23) || // lw
       opcode == Lit<6>(0x28) || // sb
       opcode == Lit<6>(0x2b) ); // sw
@@ -447,6 +450,7 @@ void Decode(decode_reg_t &out, fetch_decode_t &in) {
     opcode == Lit<6>(0x0e) || // xor
     opcode == Lit<6>(0x0f) || // lui
     opcode == Lit<6>(0x20) || // lb
+    opcode == Lit<6>(0x24) || // lbu
     opcode == Lit<6>(0x23);   // lw
 
   _(out, "rdest_valid") =
@@ -462,6 +466,7 @@ void Decode(decode_reg_t &out, fetch_decode_t &in) {
   _(out, "mem_rd") =
     _(in, "valid") && (
          opcode == Lit<6>(0x20) // lb
+      || opcode == Lit<6>(0x24) // lbu
       || opcode == Lit<6>(0x23) // lw
       #ifdef LLSC
       || opcode == Lit<6>(0x30) // ll
@@ -481,6 +486,7 @@ void Decode(decode_reg_t &out, fetch_decode_t &in) {
     _(in, "valid") && (
          opcode == Lit<6>(0x28) // sb
       || opcode == Lit<6>(0x20) // lb
+      || opcode == Lit<6>(0x24) // lbu
   );
 
   #ifdef LLSC
