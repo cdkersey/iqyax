@@ -23,9 +23,9 @@
 // #define RANDOM_STALL
 // #define INST_ROM_SIMULATE_ICACHE_MISS
 
-#define SST_MEM
+// #define SST_MEM
 #define LLSC
-// #define INTERNAL_MEM
+#define INTERNAL_MEM
 // #define INFO_ROM
 #define MAP_COUNTERS
 

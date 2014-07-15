@@ -1153,7 +1153,7 @@ vec<N/8, bvec<8> > InternalMem(word_t a_in, vec<N/8, bvec<8> > d, bvec<N/8> wr,
       IF(Reg(a >= LitW(0x88000000) && a < LitW(0x88000010)), inforom_q[i]).
       #endif
       #ifdef MAP_COUNTERS
-      IF(Reg(a >= LitW(0x88000080) && a < LitW(0x88000100)), counter_q[i]).
+      IF(Reg(a >= LitW(0x88000040) && a < LitW(0x88000080)), counter_q[i]).
       #endif
       ELSE(Syncmem(sram_addr, d[i], wr[i]));
   }
@@ -1257,7 +1257,7 @@ void SimpleMemCounters(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req)
   bvec<4> ctr_addr(addr[range<CLOG2(N/8),CLOG2(N/8)+3>()]);
 
   node valid = _(req, "valid") &&
-    (addr >= LitW(0x88000040) && addr < LitW(0x88000100));
+    (addr >= LitW(0x88000040) && addr < LitW(0x88000080));
 
   node fill, empty, next_full, full(Reg(next_full));
   Cassign(next_full).
