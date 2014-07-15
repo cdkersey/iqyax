@@ -107,7 +107,7 @@ static word_t LitW(unsigned long x) { return chdl::Lit<N>(x); }
 namespace s_core {
   const bool SOFT_IO(true), FPGA_IO(true), DEBUG_MEM(false);
   const unsigned IROM_SZ(10), RAM_SZ(20), MSHR_SZ(8);
-  const chdl::cycle_t TMAX(1000000);
+  const chdl::cycle_t TMAX(10000000);
 
   #ifdef BTB
   const unsigned BTB_SZ(5), BF_SZ(7), BF_HASHES(2), BF_CLEAR_INT(7);

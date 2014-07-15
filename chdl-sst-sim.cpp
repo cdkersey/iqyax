@@ -7,7 +7,7 @@
 #include <chdl/ingress.h>
 #include <chdl/egress.h>
 
-unsigned MAX_LATENCY(2);
+unsigned MAX_LATENCY(1);
 
 using namespace std;
 using namespace chdl;
@@ -149,6 +149,9 @@ void chdl_sst_sim_run(bool &stop, const char* hex_file, cycle_t c) {
       in >> hex >> val;
       if (!in) break;
       memvals[addr] = val;
+      memvals[addr+1] = val>>8;
+      memvals[addr+2] = val>>16;
+      memvals[addr+3] = val>>24;
       addr += 4;
     }
   }
