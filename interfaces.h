@@ -6,32 +6,32 @@
 #include <chdl/ag.h>
 #include <chdl/chdl.h>
 
-#define SIMULATE
-// #define SYNTHESIZE
+// #define SIMULATE
+#define SYNTHESIZE
 
 #define DELAYED_BRANCH
 
 #define MUL_DIV
-#define ONE_CYC_MUL
+// #define ONE_CYC_MUL
 // #define FPGA_MUL
-#define BTB
+// #define BTB
 #define TRAP
 // #define SRAM_REGS
 
-// #define FPGA_ARITH
+#define FPGA_ARITH
 
 // #define RANDOM_STALL
 // #define INST_ROM_SIMULATE_ICACHE_MISS
 
-#define SST_MEM
+// #define SST_MEM
 #define LLSC
-// #define INTERNAL_MEM
+#define INTERNAL_MEM
 // #define INFO_ROM
-#define MAP_COUNTERS
+// #define MAP_COUNTERS
 
-// #define MAP_ROM_COPY
-// #define INST_ROM
-#define SST_IMEM
+#define MAP_ROM_COPY
+#define INST_ROM
+// #define SST_IMEM
 
 #define TRISTATE_ALU_MUX
 
@@ -105,8 +105,8 @@ static word_t LitW(unsigned long x) { return chdl::Lit<N>(x); }
 #endif
 
 namespace s_core {
-  const bool SOFT_IO(true), FPGA_IO(true), DEBUG_MEM(false);
-  const unsigned IROM_SZ(10), RAM_SZ(20), MSHR_SZ(8);
+  const bool SOFT_IO(false), FPGA_IO(true), DEBUG_MEM(false);
+  const unsigned IROM_SZ(11), RAM_SZ(12), MSHR_SZ(8);
   const chdl::cycle_t TMAX(10000000);
 
   #ifdef BTB
