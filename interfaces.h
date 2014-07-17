@@ -12,22 +12,22 @@
 #define DELAYED_BRANCH
 
 #define MUL_DIV
-// #define ONE_CYC_MUL
+#define ONE_CYC_MUL
 // #define FPGA_MUL
-// #define BTB
+#define BTB
 #define TRAP
-// #define SRAM_REGS
+#define SRAM_REGS
 
-#define FPGA_ARITH
+// #define FPGA_ARITH
 
 // #define RANDOM_STALL
 // #define INST_ROM_SIMULATE_ICACHE_MISS
 
-// #define SST_MEM
+#define SST_MEM
 #define LLSC
-#define INTERNAL_MEM
-// #define INFO_ROM
-// #define MAP_COUNTERS
+// #define INTERNAL_MEM
+#define INFO_ROM
+#define MAP_COUNTERS
 
 #define MAP_ROM_COPY
 #define INST_ROM
