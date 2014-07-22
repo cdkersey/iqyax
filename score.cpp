@@ -161,7 +161,9 @@ word_t InstMem(node &bubble, word_t addr, node fetch, const char* hex_file) {
   _(_(iMemReq, "contents"), "addr") = addr;
   _(_(iMemReq, "contents"), "size") = Lit<CLOG2(DATA_SZ/8 + 1)>(N/8);
   _(_(iMemReq, "contents"), "uncached") = Lit(0);
+  #ifdef LLSC
   _(_(iMemReq, "contents"), "llsc") = Lit(0);
+  #endif
   _(_(iMemReq, "contents"), "locked") = Lit(0);
   _(_(iMemReq, "contents"), "id") = Lit<ID_SZ>(0);
 
@@ -874,7 +876,9 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   _(out, "addr") = val0 + _(in, "imm");
   _(out, "mem_rd") = _(in, "mem_rd") && in_valid;
   _(out, "mem_wr") = _(in, "mem_wr") && in_valid;
+  #ifdef LLSC
   _(out, "llsc") = _(in, "llsc") && in_valid;
+  #endif
   _(out, "mem_byte") = _(in, "mem_byte");
 
   _(out, "rdest_idx") = _(in, "rdest_idx");
