@@ -16,7 +16,7 @@
 // #define FPGA_MUL
 #define BTB
 #define TRAP
-#define SRAM_REGS
+// #define SRAM_REGS
 
 // #define FPGA_ARITH
 
@@ -29,9 +29,9 @@
 #define INFO_ROM
 #define MAP_COUNTERS
 
-#define MAP_ROM_COPY
-#define INST_ROM
-// #define SST_IMEM
+// #define MAP_ROM_COPY
+// #define INST_ROM
+#define SST_IMEM
 
 #define TRISTATE_ALU_MUX
 
