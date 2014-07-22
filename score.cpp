@@ -1607,7 +1607,11 @@ word_t InfoRom(bvec<4> a, unsigned core_id) {
   word_t q;
   Cassign(q).
     IF(a == Lit<4>(0), LitW(ovec)).     // 00 - Options vector
-    IF(a == Lit<4>(1), LitW(core_id)).  // 04 - Core ID
+    #ifdef CORE_ID_INPUT
+    IF(a == Lit<4>(1), Input<N>("id")). // 04 - Core ID
+    #else
+    IF(a == Lit<4>(1), LitW(core_id)).
+    #endif
     ELSE(LitW(0));
 
   return q;
