@@ -85,7 +85,7 @@ int main(int argc, char** argv) {
     iss >> hex >> initial_pc;
   }
 
-  SimpleCore((argc >= 2 ? argv[1] : "score.hex"), initial_pc, stop_sim);
+  SimpleCore((argc >= 2 ? argv[1] : "score.hex"), initial_pc, stop_sim, 1234);
 
   if (cycdet()) { cerr << "Error: Cycle detected.\n"; return 1; }
 

@@ -144,9 +144,21 @@ void chdl_sst_sim_run(bool &stop, const char* hex_file, cycle_t c) {
   if (hex_file) {
     unsigned long addr(0x400000);
     ifstream in(hex_file);
-    while (!!in) {
+    bool bin(in.peek() == 0);
+    long int limit = -1;
+
+    if (bin) { addr = 0; limit = 8*1024*1024; cout << "Binary input!\n"; }
+
+    while (!!in && limit--) {
       unsigned long long val;
-      in >> hex >> val;
+      if (bin) {
+        unsigned char b[4];
+        in.read((char*)b, 4);
+        val = (b[3] << 24) | (b[2] << 16) | (b[1] << 8) | b[0];
+      } else {
+        in >> hex >> val;
+      }
+
       if (!in) break;
       memvals[addr] = val;
       memvals[addr+1] = val>>8;
