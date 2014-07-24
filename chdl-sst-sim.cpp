@@ -176,17 +176,17 @@ void chdl_sst_sim_run(bool &stop, const char* hex_file, cycle_t c) {
     print_taps(vcd);
 
     // advance() function broken into individual tick stages.
-    for (auto &t : tickables()[0]) t->pre_tick();
+    for (auto &t : tickables()[0]) t->pre_tick(0);
 
     for (auto &x : mu)
       processReq(i, x.second);
 
     tick_eq(i);
 
-    for (auto &t : tickables()[0]) t->tick();
-    for (auto &t : tickables()[0]) t->tock();
-    for (auto &t : tickables()[0]) t->post_tock();
-    ++now;
+    for (auto &t : tickables()[0]) t->tick(0);
+    for (auto &t : tickables()[0]) t->tock(0);
+    for (auto &t : tickables()[0]) t->post_tock(0);
+    ++now[0];
     // advance();
 
     print_time(vcd);
