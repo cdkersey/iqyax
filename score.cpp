@@ -173,6 +173,7 @@ word_t InstMem(node &bubble, word_t addr, node fetch, const char* hex_file) {
     IF(pending && fetch, Lit(0)).
     ELSE(pending);
   TAP(pending);
+  TAP(next_pending);
 
   _(iMemResp, "ready") = Lit(1);
   bubble = !(_(iMemResp, "valid") || pending || Reg(Lit(0), 1));
@@ -357,7 +358,9 @@ void Decode(decode_reg_t &out, fetch_decode_t &in) {
   sext_imm =
     opcode == Lit<6>(0x01) || // branch
     opcode == Lit<6>(0x04) || // beq
+    // opcode == Lit<6>(0x14) || // beql
     opcode == Lit<6>(0x05) || // bne
+    // opcode == Lit<6>(0x15) || // bnel
     opcode == Lit<6>(0x08) || // addi
     opcode == Lit<6>(0x09) || // addiu
     opcode == Lit<6>(0x20) || // lb
@@ -427,11 +430,16 @@ void Decode(decode_reg_t &out, fetch_decode_t &in) {
 
   _(out, "j") = opcode == Lit<6>(0x02) || opcode == Lit<6>(0x03);
   _(out, "jr") = opcode == Lit<6>(0x00) && func == Lit<6>(0x08);
-  _(out, "beq") = opcode == Lit<6>(0x04);
-  _(out, "bne") = opcode == Lit<6>(0x05);
+  _(out, "beq") = opcode == Lit<6>(0x04);   // beq
+             //|| opcode == Lit<6>(0x14);   // beql
+  _(out, "bne") = opcode == Lit<6>(0x05);   // bne
+   	     //|| opcode == Lit<6>(0x15);   // bnel
   _(out, "bgez") = opcode == Lit<6>(0x01) &&
     (func == Lit<6>(0x01) || func == Lit<6>(0x11));
-  _(out, "bltz") = opcode == Lit<6>(0x01) && func == Lit<6>(0x10);
+  _(out, "bltz") = opcode == Lit<6>(0x01) && (
+    func == Lit<6>(0x10) || // bltz
+    func == Lit<6>(0x02)    // bltzl
+  );
   _(out, "blez") = opcode == Lit<6>(0x06) && func == Lit<6>(0x00);
   _(out, "bgtz") = opcode == Lit<6>(0x07) && func == Lit<6>(0x00);
 
@@ -644,6 +652,7 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
 
   #ifdef STALL_SIGNAL  
   node gen_stall, stall(_(in, "stall"));
+  TAP(stall); TAP(gen_stall);
   #endif
 
   word_t actual_next_pc, pc(_(in, "pc")), next_pc(_(in, "next_pc")),
@@ -774,6 +783,7 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
       ((op == Lit<6>(0x02) || op == Lit<6>(0x03)) ||    // j, jal
        (op == Lit<6>(0x00) && func == Lit<6>(0x08)) ||  // jr
        (op == Lit<6>(0x04) || op == Lit<6>(0x05)) ||    // beq, bne
+       /*(op == Lit<6>(0x14) || op == Lit<6>(0x15)) ||*/    // beql, bnel
        (op == Lit<6>(0x01) && func == Lit<6>(0x01)) ||  // bgez
        (op == Lit<6>(0x01) && func == Lit<6>(0x10)) ||  // bltzal
        (op == Lit<6>(0x01) && func == Lit<6>(0x11)) ||  // bgezal
@@ -991,10 +1001,13 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
   _(out, "pc") = pc; // For debugging purposes.
 
   #ifdef STALL_SIGNAL
-  out_buf = Wreg(!stall, Flatten(out));
-  _(out_buf, "mem_rd") = Wreg(!stall, _(out, "mem_rd")) && !gen_stall;
-  _(out_buf, "mem_wr") = Wreg(!stall, _(out, "mem_wr")) && !gen_stall;
-  _(out_buf, "rdest_valid") = Wreg(!stall, _(out, "rdest_valid")) && !gen_stall;
+  out_buf = Wreg(!_(out_buf, "stall"), Flatten(out));
+  _(out_buf, "mem_rd") =
+    Wreg(!_(out_buf, "stall"), _(out, "mem_rd") && !gen_stall);
+  _(out_buf, "mem_wr") =
+    Wreg(!_(out_buf, "stall"), _(out, "mem_wr") && !gen_stall);
+  _(out_buf, "rdest_valid") =
+    Wreg(!_(out_buf, "stall"), _(out, "rdest_valid") && !gen_stall);
   #else
   out_buf = Reg(Flatten(out));
   #endif
@@ -1477,7 +1490,7 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
     static unsigned consoleOutVal;
     EgressInt(consoleOutVal, _(in, "result"));
     node wrConsole(_(in, "mem_wr") && _(in, "addr") == LitW(1ul<<(N-1))),
-      wrChar(_(in, "mem_wr") && _(in, "addr") == LitW((1ul<<N-1)+N/4)),
+         wrChar(_(in, "mem_wr") && _(in, "addr") == LitW((1ul<<N-1)+N/4)),
          stopSimNode(_(in, "mem_wr") && _(in, "addr") == LitW((1ul<<N-1)+N/8));
 
     EgressFunc([](bool x){

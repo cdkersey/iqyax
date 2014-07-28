@@ -12,7 +12,7 @@
 #define DELAYED_BRANCH
 
 #define MUL_DIV
-#define ONE_CYC_MUL
+// #define ONE_CYC_MUL
 // #define FPGA_MUL
 #define BTB
 // #define TRAP
@@ -24,9 +24,9 @@
 // #define INST_ROM_SIMULATE_ICACHE_MISS
 
 #define SST_MEM
-// #define LLSC
+#define LLSC
 // #define INTERNAL_MEM
-#define INFO_ROM
+// #define INFO_ROM
 // #define CORE_ID_INPUT
 // #define MAP_COUNTERS
 
