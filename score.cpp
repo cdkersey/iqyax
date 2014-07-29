@@ -367,7 +367,12 @@ void Decode(decode_reg_t &out, fetch_decode_t &in) {
     opcode == Lit<6>(0x24) || // lbu
     opcode == Lit<6>(0x23) || // lw
     opcode == Lit<6>(0x28) || // sb
-    opcode == Lit<6>(0x2b);  //sw
+    opcode == Lit<6>(0x2b)    // sw
+    #ifdef LLSC
+    || opcode == Lit<6>(0x38) // sc
+    || opcode == Lit<6>(0x30) // ll
+    #endif
+    ;
 
 
   imm_shift =
@@ -389,7 +394,12 @@ void Decode(decode_reg_t &out, fetch_decode_t &in) {
       opcode == Lit<6>(0x24) || // lbu
       opcode == Lit<6>(0x23) || // lw
       opcode == Lit<6>(0x28) || // sb
-      opcode == Lit<6>(0x2b));  // sw
+      opcode == Lit<6>(0x2b)    // sw
+      #ifdef LLSC
+      || opcode == Lit<6>(0x38) // sc
+      || opcode == Lit<6>(0x30) // ll
+      #endif
+  );
 
   Cassign(_(out, "rdest_idx")).
     IF(dest_t, inst[range<N-6-10, N-6-6>()]).
@@ -418,7 +428,12 @@ void Decode(decode_reg_t &out, fetch_decode_t &in) {
       opcode == Lit<6>(0x24) || // lbu
       opcode == Lit<6>(0x23) || // lw
       opcode == Lit<6>(0x28) || // sb
-      opcode == Lit<6>(0x2b) ); // sw
+      opcode == Lit<6>(0x2b)    // sw
+      #ifdef LLSC
+      || opcode == Lit<6>(0x38) // sc
+      || opcode == Lit<6>(0x30) // ll
+      #endif
+    );
 
   _(out, "rsrc1_valid") =
     _(in, "valid") && (
@@ -426,7 +441,11 @@ void Decode(decode_reg_t &out, fetch_decode_t &in) {
       opcode == Lit<6>(0x04) || // beq
       opcode == Lit<6>(0x05) || // bne
       opcode == Lit<6>(0x28) || // sb
-      opcode == Lit<6>(0x2b) );   // sw
+      opcode == Lit<6>(0x2b)    // sw
+      #ifdef LLSC
+      || opcode == Lit<6>(0x38) // sc
+      #endif
+    );
 
   _(out, "j") = opcode == Lit<6>(0x02) || opcode == Lit<6>(0x03);
   _(out, "jr") = opcode == Lit<6>(0x00) && func == Lit<6>(0x08);
@@ -461,7 +480,12 @@ void Decode(decode_reg_t &out, fetch_decode_t &in) {
     opcode == Lit<6>(0x0f) || // lui
     opcode == Lit<6>(0x20) || // lb
     opcode == Lit<6>(0x24) || // lbu
-    opcode == Lit<6>(0x23);   // lw
+    opcode == Lit<6>(0x23)    // lw
+    #ifdef LLSC
+    || opcode == Lit<6>(0x30) // ll
+    || opcode == Lit<6>(0x38) // sc
+    #endif
+  ;
 
   _(out, "rdest_valid") =
     _(in, "valid") && (
@@ -1200,6 +1224,7 @@ void SimpleMemSSTRam(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
   _(_(memSysReq, "contents"), "size") = _(_(req, "contents"), "size");
   _(_(memSysReq, "contents"), "data") = _(_(req, "contents"), "data");
   _(_(memSysReq, "contents"), "id") = _(_(req, "contents"), "id");
+  _(_(memSysReq, "contents"), "llsc") = _(_(req, "contents"), "llsc");
   _(memSysReq, "valid") = _(req, "valid")
   #ifdef MAP_ROM_COPY
     && (addr < LitW(0x400000) || addr >= LitW(0x500000))
@@ -1212,12 +1237,23 @@ void SimpleMemSSTRam(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
   SimpleMemReqPort("d", memSysReq);
   SimpleMemRespPort("d", memSysResp);
 
-  // Responses to writes can be silently dropped.
+  // Responses to (non SC) writes can be silently dropped.
   _(memSysResp, "ready") = _(resp, "ready");
-  _(resp, "valid") = _(memSysResp,"valid") && !_(_(memSysResp,"contents"),"wr");
+  _(resp, "valid") = _(memSysResp,"valid") && (
+    !_(_(memSysResp,"contents"),"wr")
+    #ifdef LLSC
+    || /*_(_(memSysResp,"contents"),"llsc")*/Lit(1) //TODO-LLSC
+    #endif
+  );
   _(_(resp, "contents"), "id") = _(_(memSysResp, "contents"), "id");
   _(_(resp, "contents"), "data") = _(_(memSysResp, "contents"), "data");
-  _(_(resp, "contents"), "wr") = Lit(0);
+  _(_(resp, "contents"), "wr") =
+    #ifdef LLSC
+    _(_(memSysResp,"contents"),"wr")
+    #else
+    Lit(0)
+    #endif
+  ;
 }
 
 void SimpleMemRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
@@ -1369,10 +1405,19 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   typedef ag<STP("valid"), node,
           ag<STP("rdest"), rname_t,
           ag<STP("byte"), node,
-          ag<STP("bytesel"), bvec<BB> > > > > mshr_entry_t;
+          ag<STP("bytesel"), bvec<BB>
+          #ifdef LLSC
+          ,ag<STP("llsc"), node>
+          #endif
+          > > > > mshr_entry_t;
 
   mshr_entry_t mshr_in, mshr_out;
-  _(mshr_in, "valid") = _(in, "mem_rd")
+  _(mshr_in, "valid") = (
+    _(in, "mem_rd")
+    #ifdef LLSC
+    || (_(in, "mem_wr") && _(in, "llsc") /*TODO-LLSC*/)
+    #endif
+    )
   #ifdef STALL_SIGNAL
     && !_(in, "stall")
   #endif
@@ -1380,6 +1425,9 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   _(mshr_in, "rdest") = _(in, "rdest_idx");
   _(mshr_in, "byte") = _(in, "mem_byte");
   _(mshr_in, "bytesel") = bytesel;
+  #ifdef LLSC
+  _(mshr_in, "llsc") = _(in, "llsc");
+  #endif
 
   bvec<MSHR_SZ> next_mshr_occupied, mshr_occupied(Reg(next_mshr_occupied));
   bvec<CLOG2(MSHR_SZ)> mshr_tag(Log2(~mshr_occupied)), mem_resp_tag;
@@ -1423,7 +1471,12 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   _(_(sst_req, "contents"), "id") = Zext<ID_SZ>(mshr_tag); 
 
   _(sst_resp, "ready") = Lit(1);
-  mem_resp_valid = _(sst_resp, "valid") && !_(_(sst_resp, "contents"), "wr");
+  mem_resp_valid = _(sst_resp, "valid") && (
+    !_(_(sst_resp, "contents"), "wr")
+    #ifdef LLSC // TODO-LLSC
+    || _(mshr_out, "llsc")
+    #endif
+  );
   mem_resp_tag = Zext<CLOG2(MSHR_SZ)>(_(_(sst_resp, "contents"), "id"));
 
   node mem_stall;
@@ -1477,7 +1530,10 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
     IF(Reg(mem_resp_valid)).
       IF(_(mshr_out, "byte"),
         Zext<N>(Zext<8>(Reg(_(_(sst_resp, "contents"), "data"))))).
-        ELSE(Zext<N>(Reg(_(_(sst_resp, "contents"), "data")))).
+      #ifdef LLSC
+      IF(_(mshr_out, "llsc") && Reg(_(_(sst_resp, "contents"), "wr")), LitW(1)). // TODO-LLSC-NOW
+      #endif
+      ELSE(Zext<N>(Reg(_(_(sst_resp, "contents"), "data")))).
     END().
     #endif
     #ifdef STALL_SIGNAL
