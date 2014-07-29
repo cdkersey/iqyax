@@ -54,6 +54,10 @@
 #define MSHR
 #endif
 
+#ifdef LLSC
+#define MSHR
+#endif
+
 #ifdef MSHR
 #define SCOREBOARD
 #endif
@@ -107,7 +111,7 @@ static word_t LitW(unsigned long x) { return chdl::Lit<N>(x); }
 
 namespace s_core {
   const bool SOFT_IO(true), FPGA_IO(true), DEBUG_MEM(false);
-  const unsigned IROM_SZ(11), RAM_SZ(12), MSHR_SZ(8);
+  const unsigned IROM_SZ(12), RAM_SZ(20), MSHR_SZ(8);
   const chdl::cycle_t TMAX(100000);
 
   #ifdef BTB

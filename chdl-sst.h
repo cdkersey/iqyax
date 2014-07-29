@@ -16,11 +16,15 @@ typedef chdl::flit<
   chdl::ag<STP("uncached"), chdl::node,
   chdl::ag<STP("llsc"), chdl::node,
   chdl::ag<STP("locked"), chdl::node,
-  chdl::ag<STP("id"), chdl::bvec<ID_SZ> > > > > > > > > > simpleMemReq_t;
+  chdl::ag<STP("id"), chdl::bvec<ID_SZ>
+> > > > > > > > > simpleMemReq_t;
 
 typedef chdl::flit<chdl::ag<STP("data"), chdl::bvec<DATA_SZ>,
                    chdl::ag<STP("id"), chdl::bvec<ID_SZ>,
-                   chdl::ag<STP("wr"), chdl::node> > > > simpleMemResp_t;
+                   chdl::ag<STP("wr"), chdl::node,
+                   chdl::ag<STP("llsc"), chdl::node,
+                   chdl::ag<STP("llsc_suc"), chdl::node
+> > > > > > simpleMemResp_t;
 
 void SimpleMemReqPort(std::string ident, simpleMemReq_t &req);
 void SimpleMemRespPort(std::string ident, simpleMemResp_t &resp);

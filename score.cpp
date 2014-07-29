@@ -1405,11 +1405,7 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   typedef ag<STP("valid"), node,
           ag<STP("rdest"), rname_t,
           ag<STP("byte"), node,
-          ag<STP("bytesel"), bvec<BB>
-          #ifdef LLSC
-          ,ag<STP("llsc"), node>
-          #endif
-          > > > > mshr_entry_t;
+          ag<STP("bytesel"), bvec<BB> > > > > mshr_entry_t;
 
   mshr_entry_t mshr_in, mshr_out;
   _(mshr_in, "valid") = (
@@ -1425,9 +1421,6 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   _(mshr_in, "rdest") = _(in, "rdest_idx");
   _(mshr_in, "byte") = _(in, "mem_byte");
   _(mshr_in, "bytesel") = bytesel;
-  #ifdef LLSC
-  _(mshr_in, "llsc") = _(in, "llsc");
-  #endif
 
   bvec<MSHR_SZ> next_mshr_occupied, mshr_occupied(Reg(next_mshr_occupied));
   bvec<CLOG2(MSHR_SZ)> mshr_tag(Log2(~mshr_occupied)), mem_resp_tag;
@@ -1474,7 +1467,7 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   mem_resp_valid = _(sst_resp, "valid") && (
     !_(_(sst_resp, "contents"), "wr")
     #ifdef LLSC // TODO-LLSC
-    || _(mshr_out, "llsc")
+    || _(_(sst_resp, "contents"), "llsc")
     #endif
   );
   mem_resp_tag = Zext<CLOG2(MSHR_SZ)>(_(_(sst_resp, "contents"), "id"));
@@ -1531,7 +1524,7 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
       IF(_(mshr_out, "byte"),
         Zext<N>(Zext<8>(Reg(_(_(sst_resp, "contents"), "data"))))).
       #ifdef LLSC
-      IF(_(mshr_out, "llsc") && Reg(_(_(sst_resp, "contents"), "wr")), LitW(1)). // TODO-LLSC-NOW
+    IF(Reg(_(_(sst_resp, "contents"), "llsc")) && Reg(_(_(sst_resp, "contents"), "wr")), Cat(Lit<N-1>(0), Reg(_(_(sst_resp, "contents"), "llsc_suc")))).
       #endif
       ELSE(Zext<N>(Reg(_(_(sst_resp, "contents"), "data")))).
     END().

@@ -22,4 +22,6 @@ void SimpleMemRespPort(string ident, simpleMemResp_t &resp) {
   _(_(resp, "contents"), "data") = Input<DATA_SZ>("simplemem_data_resp_"+ident);
   _(_(resp, "contents"), "id") = Input<ID_SZ>("simplemem_id_resp_" + ident);
   _(_(resp, "contents"), "wr") = Input("simplemem_wr_resp_" + ident);
+  _(_(resp, "contents"), "llsc") = Input("simplemem_llsc_resp_"+ident);
+  _(_(resp, "contents"), "llsc_suc") = Input("simplemem_llscsuc_resp_"+ident);
 }
