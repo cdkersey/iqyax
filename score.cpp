@@ -1083,7 +1083,12 @@ void Exec(exec_mem_t &out_buf, exec_fetch_t &out_pc, reg_exec_t &in,
 
   #ifdef SCOREBOARD
   node set_scoreboard(_(mem_fwd, "rdest_valid") && _(mem_fwd, "mem_rd")),
-       clear_scoreboard(_(out, "mem_rd") && in_valid),
+       clear_scoreboard((
+         _(out, "mem_rd")
+         #ifdef LLSC
+         || _(out, "llsc")
+         #endif
+       ) && in_valid),
        check_scoreboard_0(_(in, "rsrc0_valid") && !bubble),
        check_scoreboard_1(_(in, "rsrc1_valid") && !bubble),
        check_scoreboard_dest(_(in, "rdest_valid") && !bubble);
@@ -1224,7 +1229,9 @@ void SimpleMemSSTRam(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
   _(_(memSysReq, "contents"), "size") = _(_(req, "contents"), "size");
   _(_(memSysReq, "contents"), "data") = _(_(req, "contents"), "data");
   _(_(memSysReq, "contents"), "id") = _(_(req, "contents"), "id");
+  #ifdef LLSC
   _(_(memSysReq, "contents"), "llsc") = _(_(req, "contents"), "llsc");
+  #endif
   _(memSysReq, "valid") = _(req, "valid")
   #ifdef MAP_ROM_COPY
     && (addr < LitW(0x400000) || addr >= LitW(0x500000))
@@ -1242,7 +1249,7 @@ void SimpleMemSSTRam(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
   _(resp, "valid") = _(memSysResp,"valid") && (
     !_(_(memSysResp,"contents"),"wr")
     #ifdef LLSC
-    || /*_(_(memSysResp,"contents"),"llsc")*/Lit(1) //TODO-LLSC
+    || _(_(memSysResp,"contents"),"llsc")
     #endif
   );
   _(_(resp, "contents"), "id") = _(_(memSysResp, "contents"), "id");
@@ -1254,6 +1261,10 @@ void SimpleMemSSTRam(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
     Lit(0)
     #endif
   ;
+  #ifdef LLSC
+  _(_(resp, "contents"), "llsc") = _(_(memSysResp, "contents"), "llsc");
+  _(_(resp, "contents"), "llsc_suc") = _(_(memSysResp, "contents"), "llsc_suc");
+  #endif
 }
 
 void SimpleMemRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
@@ -1411,7 +1422,7 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   _(mshr_in, "valid") = (
     _(in, "mem_rd")
     #ifdef LLSC
-    || (_(in, "mem_wr") && _(in, "llsc") /*TODO-LLSC*/)
+    || (_(in, "mem_wr") && _(in, "llsc") )
     #endif
     )
   #ifdef STALL_SIGNAL
@@ -1466,7 +1477,7 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   _(sst_resp, "ready") = Lit(1);
   mem_resp_valid = _(sst_resp, "valid") && (
     !_(_(sst_resp, "contents"), "wr")
-    #ifdef LLSC // TODO-LLSC
+    #ifdef LLSC
     || _(_(sst_resp, "contents"), "llsc")
     #endif
   );
