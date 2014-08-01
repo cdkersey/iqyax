@@ -1653,6 +1653,9 @@ word_t InfoRom(bvec<4> a, unsigned core_id) {
   // Assemble an "options vector"
   unsigned ovec(0);
   
+  // TODO: Make this an input or something connected somewhere.
+  const unsigned num_cores = 4;
+
   #ifdef MUL_DIV
   ovec |= 0x01;
   #endif
@@ -1679,11 +1682,13 @@ word_t InfoRom(bvec<4> a, unsigned core_id) {
 
   word_t q;
   Cassign(q).
-    IF(a == Lit<4>(0), LitW(ovec)).     // 00 - Options vector
+    IF(a == Lit<4>(0), LitW(ovec)).         // 00 - Options vector
     #ifdef CORE_ID_INPUT
-    IF(a == Lit<4>(1), Input<N>("id")). // 04 - Core ID
+    IF(a == Lit<4>(1), Input<N>("id")).     // 04 - Core ID
+    IF(a == Lit<4>(2), Input<N>("cores")).  // 08 - Number of Cores
     #else
     IF(a == Lit<4>(1), LitW(core_id)).
+    IF(a == Lit<4>(2), LitW(num_cores)).
     #endif
     ELSE(LitW(0));
 
