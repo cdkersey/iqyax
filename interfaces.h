@@ -6,8 +6,8 @@
 #include <chdl/ag.h>
 #include <chdl/chdl.h>
 
-// #define SIMULATE
-#define SYNTHESIZE
+#define SIMULATE
+// #define SYNTHESIZE
 
 #define DELAYED_BRANCH
 
@@ -27,7 +27,7 @@
 #define LLSC
 // #define INTERNAL_MEM
 #define INFO_ROM
-#define CORE_ID_INPUT
+// #define CORE_ID_INPUT
 // #define MAP_COUNTERS
 
 // #define MAP_ROM_COPY

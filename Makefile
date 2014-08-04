@@ -4,7 +4,7 @@ LDLIBS = -lchdl
 #score.vcd : score score.hex
 #	./score
 
-score : score.o chdl-sst.o #chdl-sst-sst.o
+score : score.o chdl-sst-sim.o #chdl-sst.o
 	$(CXX) -o score $(CXXFLAGS) $(LDFLAGS) $^ $(LDLIBS)
 
 chdl-sst-sim.o: chdl-sst-sim.cpp chdl-sst.h
