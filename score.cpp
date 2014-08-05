@@ -1546,12 +1546,12 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
     ELSE(Reg(_(in, "result")));
     #endif
 
+  node stopSimNode(_(in, "mem_wr") && _(in, "addr") == LitW((1ul<<N-1)+N/8));
   if (SOFT_IO) {
     static unsigned consoleOutVal;
     EgressInt(consoleOutVal, _(in, "result"));
     node wrConsole(_(in, "mem_wr") && _(in, "addr") == LitW(1ul<<(N-1))),
-         wrChar(_(in, "mem_wr") && _(in, "addr") == LitW((1ul<<N-1)+N/4)),
-         stopSimNode(_(in, "mem_wr") && _(in, "addr") == LitW((1ul<<N-1)+N/8));
+         wrChar(_(in, "mem_wr") && _(in, "addr") == LitW((1ul<<N-1)+N/4));
 
     EgressFunc([](bool x){
       if (x) cout << "OUTPUT> " << consoleOutVal << endl;
@@ -1570,6 +1570,8 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
     }, wrChar);
 
     Egress(stop_sim, stopSimNode);
+  } else {
+    tap("stop_sim", stopSimNode);
   }
 
   if (FPGA_IO) {
