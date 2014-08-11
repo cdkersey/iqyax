@@ -1,10 +1,10 @@
-CXXFLAGS = -std=c++11 -g
+CXXFLAGS = -std=c++11 -O2 -DTRANS #-g
 LDLIBS = -lchdl
 
 #score.vcd : score score.hex
 #	./score
 
-score : score.o chdl-sst.o #chdl-sst-sim.o
+score : score.o chdl-sst-sim.o #chdl-sst.o
 	$(CXX) -o score $(CXXFLAGS) $(LDFLAGS) $^ $(LDLIBS)
 
 chdl-sst-sim.o: chdl-sst-sim.cpp chdl-sst.h

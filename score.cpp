@@ -100,7 +100,7 @@ int main(int argc, char** argv) {
   chdl_sst_sim_run(stop_sim, (argc >= 2 ? argv[1] : "score.hex"), TMAX);
   #else
   ofstream vcd("score.vcd");
-  run(vcd, stop_sim, TMAX);
+  run_trans(vcd, stop_sim, TMAX);
   #endif
   #endif
 
@@ -1573,6 +1573,7 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   } else {
     tap("stop_sim", stopSimNode);
   }
+  TAP(stopSimNode);
 
   if (FPGA_IO) {
     node strobe(_(in, "mem_wr") && _(in, "addr") == LitW((1ul<<(N-1))+N/4));

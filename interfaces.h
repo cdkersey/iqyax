@@ -6,8 +6,8 @@
 #include <chdl/ag.h>
 #include <chdl/chdl.h>
 
-// #define SIMULATE
-#define SYNTHESIZE
+#define SIMULATE
+// #define SYNTHESIZE
 
 #define DELAYED_BRANCH
 
@@ -27,8 +27,8 @@
 #define LLSC
 // #define INTERNAL_MEM
 #define INFO_ROM
-#define CORE_ID_INPUT
-// #define MAP_COUNTERS
+// #define CORE_ID_INPUT
+#define MAP_COUNTERS
 
 // #define MAP_ROM_COPY
 // #define INST_ROM
@@ -110,12 +110,12 @@ static word_t LitW(unsigned long x) { return chdl::Lit<N>(x); }
 #endif
 
 namespace s_core {
-  const bool SOFT_IO(false), FPGA_IO(false), DEBUG_MEM(false);
+  const bool SOFT_IO(true), FPGA_IO(true), DEBUG_MEM(false);
   const unsigned IROM_SZ(12), RAM_SZ(20), MSHR_SZ(8);
-  const chdl::cycle_t TMAX(100000);
+  const chdl::cycle_t TMAX(10000000);
 
   #ifdef BTB
-  const unsigned BTB_SZ(7), BF_SZ(10), BF_HASHES(2), BF_CLEAR_INT(7);
+  const unsigned BTB_SZ(7), BF_SZ(7), BF_HASHES(2), BF_CLEAR_INT(7);
   #endif
 
   typedef chdl::bvec<5> rname_t;

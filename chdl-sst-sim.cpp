@@ -131,7 +131,7 @@ void SimpleMemRespPort(string ident, simpleMemResp_t &resp) {
   else p = mu[ident];
 
   Egress(p->resp.ready, _(resp, "ready"));
-  _(resp, "valid") = IngressAutoclear(p->resp.valid);
+  _(resp, "valid") = Ingress(p->resp.valid);
   _(_(resp, "contents"), "data") = IngressInt<DATA_SZ>(p->resp.data);
   _(_(resp, "contents"), "id") = IngressInt<ID_SZ>(p->resp.id);
   _(_(resp, "contents"), "wr") = Ingress(p->resp.wr);
@@ -139,6 +139,10 @@ void SimpleMemRespPort(string ident, simpleMemResp_t &resp) {
 
 extern unsigned aval, pcval, irval, seqval, mdrval;
 extern bool rvval, rwval;
+
+#ifdef OLD_SST
+cdomain_handle_t default_evaluator() { return 0; }
+#endif
 
 void chdl_sst_sim_run(bool &stop, const char* hex_file, cycle_t c) {
   if (hex_file) {
@@ -172,22 +176,37 @@ void chdl_sst_sim_run(bool &stop, const char* hex_file, cycle_t c) {
 
   print_vcd_header(vcd);
   print_time(vcd);
+  #ifdef TRANS
+  init_trans();
+  #endif
   for (unsigned i = 0; i < c && !stop; ++i) {
-    print_taps(vcd);
-
     // advance() function broken into individual tick stages.
-    for (auto &t : tickables()[0]) t->pre_tick(0);
+    #ifdef TRANS
+    pre_tick_trans();
+    #else
+    print_taps(vcd, default_evaluator());
+    for (auto &t : tickables()[0]) t->pre_tick(default_evaluator());
+    #endif
 
-    for (auto &x : mu)
+    for (auto &x : mu) {
+      x.second->resp.valid = false;
       processReq(i, x.second);
+    }
 
     tick_eq(i);
 
-    for (auto &t : tickables()[0]) t->tick(0);
-    for (auto &t : tickables()[0]) t->tock(0);
-    for (auto &t : tickables()[0]) t->post_tock(0);
+    #ifdef TRANS
+    recompute_logic_trans();
+    tick_trans();
+    tock_trans();
+    post_tock_trans();
+    print_taps(vcd, trans_evaluator());
+    #else
+    for (auto &t : tickables()[0]) t->tick(default_evaluator());
+    for (auto &t : tickables()[0]) t->tock(default_evaluator());
+    for (auto &t : tickables()[0]) t->post_tock(default_evaluator());
+    #endif
     ++now[0];
-    // advance();
 
     print_time(vcd);
   }
