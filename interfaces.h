@@ -24,11 +24,11 @@
 // #define INST_ROM_SIMULATE_ICACHE_MISS
 
 #define SST_MEM
-#define LLSC
+// #define LLSC
 // #define INTERNAL_MEM
 #define INFO_ROM
 // #define CORE_ID_INPUT
-#define MAP_COUNTERS
+// #define MAP_COUNTERS
 
 // #define MAP_ROM_COPY
 // #define INST_ROM
@@ -263,7 +263,7 @@ namespace s_core {
           ,chdl::ag<STP("llsc"), chdl::node
           #endif
           #ifdef STALL_SIGNAL
-           ,chdl::ag<STP("stall"), chdl::node>
+          ,chdl::ag<STP("stall"), chdl::node>
           #endif
           #ifdef LLSC
           >

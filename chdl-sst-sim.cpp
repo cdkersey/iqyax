@@ -182,10 +182,11 @@ void chdl_sst_sim_run(bool &stop, const char* hex_file, cycle_t c) {
   for (unsigned i = 0; i < c && !stop; ++i) {
     // advance() function broken into individual tick stages.
     #ifdef TRANS
-    pre_tick_trans();
+    pre_tick_trans(0);
+    print_taps(vcd, trans_evaluator());
     #else
-    print_taps(vcd, default_evaluator());
-    for (auto &t : tickables()[0]) t->pre_tick(default_evaluator());
+    print_taps(vcd, default_evaluator(0));
+    for (auto &t : tickables()[0]) t->pre_tick(default_evaluator(0));
     #endif
 
     for (auto &x : mu) {
@@ -196,15 +197,14 @@ void chdl_sst_sim_run(bool &stop, const char* hex_file, cycle_t c) {
     tick_eq(i);
 
     #ifdef TRANS
-    recompute_logic_trans();
-    tick_trans();
-    tock_trans();
-    post_tock_trans();
-    print_taps(vcd, trans_evaluator());
+    recompute_logic_trans(0);
+    tick_trans(0);
+    tock_trans(0);
+    post_tock_trans(0);
     #else
-    for (auto &t : tickables()[0]) t->tick(default_evaluator());
-    for (auto &t : tickables()[0]) t->tock(default_evaluator());
-    for (auto &t : tickables()[0]) t->post_tock(default_evaluator());
+    for (auto &t : tickables()[0]) t->tick(default_evaluator(0));
+    for (auto &t : tickables()[0]) t->tock(default_evaluator(0));
+    for (auto &t : tickables()[0]) t->post_tock(default_evaluator(0));
     #endif
     ++now[0];
 
