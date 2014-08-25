@@ -141,7 +141,7 @@ extern unsigned aval, pcval, irval, seqval, mdrval;
 extern bool rvval, rwval;
 
 #ifdef OLD_SST
-cdomain_handle_t default_evaluator() { return 0; }
+static cdomain_handle_t default_evaluator(cdomain_handle_t cd) { return cd; }
 #endif
 
 void chdl_sst_sim_run(bool &stop, const char* hex_file, cycle_t c) {

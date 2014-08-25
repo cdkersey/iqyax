@@ -100,7 +100,11 @@ int main(int argc, char** argv) {
   chdl_sst_sim_run(stop_sim, (argc >= 2 ? argv[1] : "score.hex"), TMAX);
   #else
   ofstream vcd("score.vcd");
+  #ifdef TRANS
   run_trans(vcd, stop_sim, TMAX);
+  #else
+  run(vcd, stop_sim, TMAX);
+  #endif
   #endif
   #endif
 
