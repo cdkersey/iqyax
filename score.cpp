@@ -1584,6 +1584,13 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
     OUTPUT(strobe);
     bvec<7> val(_(in, "result")[range<0,6>()]);
     OUTPUT(val);
+  } else if (LED_IO) {
+    node strobe0(_(in, "mem_wr") && _(in, "addr") == LitW((1ul<<(N-1))+N/4)),
+         strobe1(_(in, "mem_wr") && _(in, "addr") == LitW((1ul<<(N-1))+N/4+1));
+    bvec<8> led0(~Wreg(strobe0, Zext<8>(_(in, "result")))),
+            led1(~Wreg(strobe1, Zext<8>(_(in, "result"))));
+    OUTPUT(led0);
+    OUTPUT(led1);
   }
 
   if (DEBUG_MEM) {

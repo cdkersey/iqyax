@@ -16,7 +16,7 @@
 #define FPGA_MUL
 #define BTB
 // #define TRAP
-#define SRAM_REGS
+// #define SRAM_REGS
 
 // #define FPGA_ARITH
 
@@ -26,9 +26,9 @@
 // #define SST_MEM
 // #define LLSC
 #define INTERNAL_MEM
-#define INFO_ROM
+// #define INFO_ROM
 // #define CORE_ID_INPUT
-#define MAP_COUNTERS
+// #define MAP_COUNTERS
 
 #define MAP_ROM_COPY
 #define INST_ROM
@@ -110,12 +110,12 @@ static word_t LitW(unsigned long x) { return chdl::Lit<N>(x); }
 #endif
 
 namespace s_core {
-  const bool SOFT_IO(false), FPGA_IO(true), DEBUG_MEM(false);
-  const unsigned IROM_SZ(12), RAM_SZ(20), MSHR_SZ(8);
+  const bool SOFT_IO(false), FPGA_IO(false), LED_IO(true), DEBUG_MEM(false);
+  const unsigned IROM_SZ(12), RAM_SZ(10), MSHR_SZ(8);
   const chdl::cycle_t TMAX(10000000);
 
   #ifdef BTB
-  const unsigned BTB_SZ(7), BF_SZ(7), BF_HASHES(2), BF_CLEAR_INT(7);
+  const unsigned BTB_SZ(5), BF_SZ(6), BF_HASHES(2), BF_CLEAR_INT(7);
   #endif
 
   typedef chdl::bvec<5> rname_t;
