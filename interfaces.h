@@ -6,14 +6,14 @@
 #include <chdl/ag.h>
 #include <chdl/chdl.h>
 
-// #define SIMULATE
-#define SYNTHESIZE
+#define SIMULATE
+// #define SYNTHESIZE
 
 #define DELAYED_BRANCH
 
 #define MUL_DIV
 #define ONE_CYC_MUL
-#define FPGA_MUL
+// #define FPGA_MUL
 #define BTB
 // #define TRAP
 // #define SRAM_REGS
@@ -110,8 +110,8 @@ static word_t LitW(unsigned long x) { return chdl::Lit<N>(x); }
 #endif
 
 namespace s_core {
-  const bool SOFT_IO(false), FPGA_IO(false), LED_IO(true), DEBUG_MEM(false);
-  const unsigned IROM_SZ(12), RAM_SZ(10), MSHR_SZ(8);
+  const bool SOFT_IO(true), FPGA_IO(false), LED_IO(false), DEBUG_MEM(false);
+  const unsigned IROM_SZ(10), RAM_SZ(10), MSHR_SZ(8);
   const chdl::cycle_t TMAX(10000000);
 
   #ifdef BTB
