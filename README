@@ -23,7 +23,7 @@ C++ hardware design library.
 -----------------------------------
 
 The following results were obtained with Altera Quartus Web Edition Version 13.0
-and a Terasic DE-2 board with an Altera Cyclone FPGA.
+and a Terasic DE-1 board with an Altera Cyclone FPGA.
 
 SRAM_REGS BTB FPGA_MUL 3st_ALU_MUX | Gates  Critpath  LEs  Regs  SRAM_b  Fmax
 -----------------------------------+--------------------------------------------
