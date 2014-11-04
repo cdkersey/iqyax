@@ -164,11 +164,9 @@ word_t InstMem(node &bubble, word_t addr, node fetch, const char* hex_file) {
   _(_(iMemReq, "contents"), "wr") = Lit(0);
   _(_(iMemReq, "contents"), "addr") = addr;
   _(_(iMemReq, "contents"), "size") = Lit<CLOG2(DATA_SZ/8 + 1)>(N/8);
-  _(_(iMemReq, "contents"), "uncached") = Lit(0);
   #ifdef LLSC
   _(_(iMemReq, "contents"), "llsc") = Lit(0);
   #endif
-  _(_(iMemReq, "contents"), "locked") = Lit(0);
   _(_(iMemReq, "contents"), "id") = Lit<ID_SZ>(0);
 
   node next_pending, pending(Reg(next_pending));
@@ -181,7 +179,7 @@ word_t InstMem(node &bubble, word_t addr, node fetch, const char* hex_file) {
 
   _(iMemResp, "ready") = Lit(1);
   bubble = !(_(iMemResp, "valid") || pending || Reg(Lit(0), 1));
-  q = _(_(iMemResp, "contents"), "data");
+  q = Flatten(_(_(iMemResp, "contents"), "data"));
 
   SimpleMemReqPort("i", iMemReq);
   SimpleMemRespPort("i", iMemResp);
@@ -1291,7 +1289,7 @@ void SimpleMemRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
 
   stall = full && !_(resp, "ready");
   _(resp, "valid") = full;
-  _(_(resp, "contents"), "data") =
+  Flatten(_(_(resp, "contents"), "data")) =
     Wreg(fill, LLRom<IROM_SZ, N>(rom_addr, hex_file) >> 
       Zext<CLOG2(N)>(Cat(addr[range<0,CLOG2(N/8)-1>()], Lit<3>(0)))
   );
@@ -1318,7 +1316,7 @@ void SimpleMemInfoRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
 
   stall = full && !_(resp, "ready");
   _(resp, "valid") = full;
-  _(_(resp, "contents"), "data") =
+  Flatten(_(_(resp, "contents"), "data")) =
     Wreg(fill, InfoRom(rom_addr, core_id) >> 
       Zext<CLOG2(N)>(Cat(addr[range<0,CLOG2(N/8)-1>()], Lit<3>(0)))
     );
@@ -1344,7 +1342,7 @@ void SimpleMemCounters(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req)
 
   stall = full && !_(resp, "ready");
   _(resp, "valid") = full;
-  _(_(resp, "contents"), "data") =
+  Flatten(_(_(resp, "contents"), "data")) =
     Wreg(fill, CounterMem(ctr_addr) >> 
       Zext<CLOG2(N)>(Cat(addr[range<0,CLOG2(N/8)-1>()], Lit<3>(0)))
     );
@@ -1468,14 +1466,12 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   _(_(sst_req, "contents"), "addr") = Zext<ADDR_SZ>(_(in, "addr"));
   _(_(sst_req, "contents"), "size") =
     Zext<CLOG2(DATA_SZ/8 + 1)>(Mux(_(in, "mem_byte"), LitW(N/8), LitW(1)));
-  _(_(sst_req, "contents"), "data") = Zext<DATA_SZ>(_(in, "result"));
-  _(_(sst_req, "contents"), "uncached") = Lit(0);
+  Flatten(_(_(sst_req, "contents"), "data")) = Zext<DATA_SZ>(_(in, "result"));
   #ifdef LLSC
   _(_(sst_req, "contents"), "llsc") = _(in, "llsc");
   #else
   _(_(sst_req, "contents"), "llsc") = Lit(0);
   #endif
-  _(_(sst_req, "contents"), "locked") = Lit(0);
   _(_(sst_req, "contents"), "id") = Zext<ID_SZ>(mshr_tag); 
 
   _(sst_resp, "ready") = Lit(1);

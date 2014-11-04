@@ -16,7 +16,7 @@
 // #define FPGA_MUL
 #define BTB
 // #define TRAP
-#define SRAM_REGS
+// #define SRAM_REGS
 
 // #define FPGA_ARITH
 
