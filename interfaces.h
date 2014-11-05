@@ -1,5 +1,5 @@
-#ifndef SCORE_INTERFACES_H
-#define SCORE_INTERFACES_H
+#ifndef IQYAX_INTERFACES_H
+#define IQYAX_INTERFACES_H
 
 #include <sstream>
 

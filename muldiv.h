@@ -1,5 +1,5 @@
-#ifndef SCORE_MULDIV_H
-#define SCORE_MULDIV_H
+#ifndef IQYAX_MULDIV_H
+#define IQYAX_MULDIV_H
 
 #include <chdl/chdl.h>
 #include <chdl/cassign.h>

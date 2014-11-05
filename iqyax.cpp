@@ -50,8 +50,8 @@ void Exec(exec_mem_t &out, exec_fetch_t &out_pc, reg_exec_t &in, mem_exec_t &f);
 void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
          const char *hex_file, bool &stop_sim, unsigned core_id);
 
-void SimpleCore(const char *hex_file, unsigned initial_pc, bool &stop_sim,
-                unsigned core_id = 0)
+void Iqyax(const char *hex_file, unsigned initial_pc, bool &stop_sim,
+           unsigned core_id = 0)
 {
   fetch_decode_t fetch_decode;
   decode_reg_t decode_reg;
@@ -85,21 +85,21 @@ int main(int argc, char** argv) {
     iss >> hex >> initial_pc;
   }
 
-  SimpleCore((argc >= 2 ? argv[1] : "score.hex"), initial_pc, stop_sim, 1234);
+  Iqyax((argc >= 2 ? argv[1] : "iqyax.hex"), initial_pc, stop_sim, 1234);
 
   if (cycdet()) { cerr << "Error: Cycle detected.\n"; return 1; }
 
   optimize();
   opt_assoc_balance();
 
-  ofstream cpr("score.cpr");
+  ofstream cpr("iqyax.cpr");
   critpath_report(cpr);
 
   #ifdef SIMULATE
   #ifdef SST_MEM
-  chdl_sst_sim_run(stop_sim, (argc >= 2 ? argv[1] : "score.hex"), TMAX);
+  chdl_sst_sim_run(stop_sim, (argc >= 2 ? argv[1] : "iqyax.hex"), TMAX);
   #else
-  ofstream vcd("score.vcd");
+  ofstream vcd("iqyax.vcd");
   #ifdef TRANS
   run_trans(vcd, stop_sim, TMAX);
   #else
@@ -109,10 +109,10 @@ int main(int argc, char** argv) {
   #endif
 
   #ifdef SYNTHESIZE
-  ofstream vl("score.v");
-  print_verilog("score", vl);
+  ofstream vl("iqyax.v");
+  print_verilog("iqyax", vl);
 
-  ofstream nand("score.nand");
+  ofstream nand("iqyax.nand");
   print_netlist(nand);
   #endif
 

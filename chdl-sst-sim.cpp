@@ -172,7 +172,7 @@ void chdl_sst_sim_run(bool &stop, const char* hex_file, cycle_t c) {
     }
   }
 
-  ofstream vcd("score.vcd");
+  ofstream vcd("iqyax.vcd");
 
   print_vcd_header(vcd);
   print_time(vcd);

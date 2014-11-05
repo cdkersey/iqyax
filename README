@@ -1,5 +1,5 @@
-SimpleCore
-----------
+Iqyax
+-----
 
 0.0 - Contents
 --------------
@@ -13,8 +13,8 @@ SimpleCore
 0.1 - Introduction
 ------------------
 
-SimpleCore is a full-featured open source soft core implemented using CHDL, a
-C++ hardware design library.
+Iqyax is a full-featured open source soft core implemented using CHDL, a C++
+hardware design library.
 
 1 - Getting Started
 -------------------
