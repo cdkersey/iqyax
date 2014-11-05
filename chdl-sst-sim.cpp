@@ -117,7 +117,7 @@ void SimpleMemReqPort(string ident, simpleMemReq_t &req) {
   _(req, "ready") = Lit(1); //Ingress(p->req.ready);
   Egress(p->req.valid, _(req, "valid"));
   EgressInt(p->req.addr, _(_(req, "contents"), "addr"));
-  EgressInt(p->req.data, _(_(req, "contents"), "data"));
+  EgressInt(p->req.data, Flatten(_(_(req, "contents"), "data")));
   EgressInt(p->req.size, _(_(req, "contents"), "size"));
   EgressInt(p->req.id, _(_(req, "contents"), "id"));
   Egress(p->req.wr, _(_(req, "contents"), "wr"));
@@ -132,7 +132,7 @@ void SimpleMemRespPort(string ident, simpleMemResp_t &resp) {
 
   Egress(p->resp.ready, _(resp, "ready"));
   _(resp, "valid") = Ingress(p->resp.valid);
-  _(_(resp, "contents"), "data") = IngressInt<DATA_SZ>(p->resp.data);
+  Flatten(_(_(resp, "contents"), "data")) = IngressInt<DATA_SZ>(p->resp.data);
   _(_(resp, "contents"), "id") = IngressInt<ID_SZ>(p->resp.id);
   _(_(resp, "contents"), "wr") = Ingress(p->resp.wr);
 }

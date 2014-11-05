@@ -1533,11 +1533,11 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
     #ifdef SST_MEM
     IF(Reg(mem_resp_valid)).
       IF(_(mshr_out, "byte"),
-        Zext<N>(Zext<8>(Reg(_(_(sst_resp, "contents"), "data"))))).
+        Zext<N>(Reg(_(_(sst_resp, "contents"), "data")[0]))).
       #ifdef LLSC
     IF(Reg(_(_(sst_resp, "contents"), "llsc")) && Reg(_(_(sst_resp, "contents"), "wr")), Cat(Lit<N-1>(0), Reg(_(_(sst_resp, "contents"), "llsc_suc")))).
       #endif
-      ELSE(Zext<N>(Reg(_(_(sst_resp, "contents"), "data")))).
+      ELSE(Zext<N>(Reg(Flatten(_(_(sst_resp, "contents"), "data"))))).
     END().
     #endif
     #ifdef STALL_SIGNAL
@@ -1631,7 +1631,7 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
     static bool sst_resp_wr_val;
     static unsigned sst_resp_data_val, sst_resp_tag_val;
     Egress(sst_resp_wr_val, _(_(sst_resp, "contents"), "wr"));
-    EgressInt(sst_resp_data_val, _(_(sst_resp, "contents"), "data"));
+    EgressInt(sst_resp_data_val, Flatten(_(_(sst_resp, "contents"), "data")));
     EgressInt(sst_resp_tag_val, _(_(sst_resp, "contents"), "id"));
     // Debugging stuff for SST memory
     EgressFunc([](bool x) {
