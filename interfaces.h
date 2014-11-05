@@ -6,8 +6,8 @@
 #include <chdl/ag.h>
 #include <chdl/chdl.h>
 
-#define SIMULATE
-// #define SYNTHESIZE
+// #define SIMULATE
+#define SYNTHESIZE
 
 #define DELAYED_BRANCH
 

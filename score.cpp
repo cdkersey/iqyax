@@ -167,6 +167,7 @@ word_t InstMem(node &bubble, word_t addr, node fetch, const char* hex_file) {
   #ifdef LLSC
   _(_(iMemReq, "contents"), "llsc") = Lit(0);
   #endif
+  _(_(iMemReq, "contents"), "mask") = Lit<4>(N/8);
   _(_(iMemReq, "contents"), "id") = Lit<ID_SZ>(0);
 
   node next_pending, pending(Reg(next_pending));
@@ -1467,6 +1468,7 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   _(_(sst_req, "contents"), "size") =
     Zext<CLOG2(DATA_SZ/8 + 1)>(Mux(_(in, "mem_byte"), LitW(N/8), LitW(1)));
   Flatten(_(_(sst_req, "contents"), "data")) = Zext<DATA_SZ>(_(in, "result"));
+  _(_(sst_req, "contents"), "mask") = ~Lit<N/8>(0);
   #ifdef LLSC
   _(_(sst_req, "contents"), "llsc") = _(in, "llsc");
   #else
