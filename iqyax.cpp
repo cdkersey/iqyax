@@ -163,11 +163,10 @@ word_t InstMem(node &bubble, word_t addr, node fetch, const char* hex_file) {
   _(iMemReq, "valid") = fetch;
   _(_(iMemReq, "contents"), "wr") = Lit(0);
   _(_(iMemReq, "contents"), "addr") = addr;
-  _(_(iMemReq, "contents"), "size") = Lit<CLOG2(DATA_SZ/8 + 1)>(N/8);
   #ifdef LLSC
   _(_(iMemReq, "contents"), "llsc") = Lit(0);
   #endif
-  _(_(iMemReq, "contents"), "mask") = Lit<4>(N/8);
+  _(_(iMemReq, "contents"), "mask") = Lit<4>(0);
   _(_(iMemReq, "contents"), "id") = Lit<ID_SZ>(0);
 
   node next_pending, pending(Reg(next_pending));
@@ -1229,7 +1228,6 @@ void SimpleMemSSTRam(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
 
   _(_(memSysReq, "contents"), "wr") = _(_(req, "contents"), "wr");
   _(_(memSysReq, "contents"), "addr") = _(_(req, "contents"), "addr");
-  _(_(memSysReq, "contents"), "size") = _(_(req, "contents"), "size");
   _(_(memSysReq, "contents"), "data") = _(_(req, "contents"), "data");
   _(_(memSysReq, "contents"), "id") = _(_(req, "contents"), "id");
   #ifdef LLSC
@@ -1465,8 +1463,6 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   );
   _(_(sst_req, "contents"), "wr") = _(in, "mem_wr");
   _(_(sst_req, "contents"), "addr") = Zext<ADDR_SZ>(_(in, "addr"));
-  _(_(sst_req, "contents"), "size") =
-    Zext<CLOG2(DATA_SZ/8 + 1)>(Mux(_(in, "mem_byte"), LitW(N/8), LitW(1)));
   Flatten(_(_(sst_req, "contents"), "data")) = Zext<DATA_SZ>(_(in, "result"));
   _(_(sst_req, "contents"), "mask") = ~Lit<N/8>(0);
   #ifdef LLSC

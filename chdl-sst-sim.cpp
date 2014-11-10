@@ -15,7 +15,7 @@ using namespace chdl;
 struct req_t {
   bool valid, ready, wr;
   unsigned long addr, data;
-  unsigned size, id;
+  unsigned id;
 };
 
 struct resp_t {
@@ -118,7 +118,6 @@ void SimpleMemReqPort(string ident, simpleMemReq_t &req) {
   Egress(p->req.valid, _(req, "valid"));
   EgressInt(p->req.addr, _(_(req, "contents"), "addr"));
   EgressInt(p->req.data, Flatten(_(_(req, "contents"), "data")));
-  EgressInt(p->req.size, _(_(req, "contents"), "size"));
   EgressInt(p->req.id, _(_(req, "contents"), "id"));
   Egress(p->req.wr, _(_(req, "contents"), "wr"));
 }
