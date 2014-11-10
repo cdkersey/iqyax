@@ -7,14 +7,14 @@
 #include <chdl/ingress.h>
 #include <chdl/egress.h>
 
-unsigned MAX_LATENCY(1);
+unsigned MAX_LATENCY(10);
 
 using namespace std;
 using namespace chdl;
 
 struct req_t {
   bool valid, ready, wr;
-  unsigned long addr, data;
+  unsigned long addr, data, mask;
   unsigned id;
 };
 
@@ -92,7 +92,7 @@ void tick_eq(cycle_t t) {
 void processReq(cycle_t now, memUnit_t *m) {
   if (m->req.valid) {
     cout << "MEM " << (m->req.wr?"WRITE":"READ") << ' ' << m->req.id
-         << ' ' << hex << m->req.addr << dec;
+         << ' ' << hex << m->req.addr << " mask = " << m->req.mask << dec;
     if (m->req.wr) cout << ", " << (m->req.data);
     cout << endl;
 
@@ -100,8 +100,19 @@ void processReq(cycle_t now, memUnit_t *m) {
     while (eq.find(respTime) != eq.end()) ++respTime;
     cout << "  resp scheduled for " << respTime << endl;
     unsigned long rd_data;
-    if (m->req.wr) memvals[m->req.addr] = m->req.data;
-    else           rd_data = memvals[m->req.addr];
+    if (m->req.wr) {
+      for (unsigned i = 0; i < 4; ++i) {
+        if ((m->req.mask >> i)&1) {
+          memvals[m->req.addr * 4 + i] = (m->req.data >> i*8) & 0xff;
+        }
+      }
+    } else {
+      rd_data = 0;
+      for (unsigned i = 0; i < 4; ++i) {
+	rd_data <<= 8;
+        rd_data |= memvals[m->req.addr * 4 + 3 - i] & 0xff;
+      }
+    }
     
     sched_resp(respTime, m, (m->req.wr?0:rd_data), m->req.id, m->req.wr);
   }
@@ -118,6 +129,7 @@ void SimpleMemReqPort(string ident, simpleMemReq_t &req) {
   Egress(p->req.valid, _(req, "valid"));
   EgressInt(p->req.addr, _(_(req, "contents"), "addr"));
   EgressInt(p->req.data, Flatten(_(_(req, "contents"), "data")));
+  EgressInt(p->req.mask, _(_(req, "contents"), "mask"));
   EgressInt(p->req.id, _(_(req, "contents"), "id"));
   Egress(p->req.wr, _(_(req, "contents"), "wr"));
 }
@@ -163,10 +175,10 @@ void chdl_sst_sim_run(bool &stop, const char* hex_file, cycle_t c) {
       }
 
       if (!in) break;
-      memvals[addr] = val;
-      memvals[addr+1] = val>>8;
-      memvals[addr+2] = val>>16;
-      memvals[addr+3] = val>>24;
+      memvals[addr] = val & 0xff;
+      memvals[addr+1] = (val>>8) & 0xff;
+      memvals[addr+2] = (val>>16) & 0xff;
+      memvals[addr+3] = (val>>24) & 0xff;
       addr += 4;
     }
   }

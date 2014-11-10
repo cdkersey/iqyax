@@ -9,7 +9,10 @@
 
 const unsigned ADDR_SZ(32), DATA_SZ(32), ID_SZ(5);
 
-typedef chdl::mem_req<8, DATA_SZ/8, ADDR_SZ, ID_SZ> simpleMemReq_t;
+typedef chdl::mem_req<
+  8, DATA_SZ/8, ADDR_SZ - chdl::CLOG2(DATA_SZ/8), ID_SZ
+> simpleMemReq_t;
+
 typedef chdl::mem_resp<8, DATA_SZ/8, ID_SZ> simpleMemResp_t;
 
 void SimpleMemReqPort(std::string ident, simpleMemReq_t &req);

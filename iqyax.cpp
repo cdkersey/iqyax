@@ -162,7 +162,7 @@ word_t InstMem(node &bubble, word_t addr, node fetch, const char* hex_file) {
 
   _(iMemReq, "valid") = fetch;
   _(_(iMemReq, "contents"), "wr") = Lit(0);
-  _(_(iMemReq, "contents"), "addr") = addr;
+  _(_(iMemReq, "contents"), "addr") = addr[range<CLOG2(N/8),N-1>()];
   #ifdef LLSC
   _(_(iMemReq, "contents"), "llsc") = Lit(0);
   #endif
@@ -1224,12 +1224,13 @@ void SimpleMemSSTRam(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
   simpleMemReq_t memSysReq;
   simpleMemResp_t memSysResp;
 
-  word_t addr(_(_(req, "contents"), "addr"));
+  word_t addr(Cat(_(_(req, "contents"), "addr"), Lit<CLOG2(N/8)>(0)));
 
   _(_(memSysReq, "contents"), "wr") = _(_(req, "contents"), "wr");
   _(_(memSysReq, "contents"), "addr") = _(_(req, "contents"), "addr");
   _(_(memSysReq, "contents"), "data") = _(_(req, "contents"), "data");
   _(_(memSysReq, "contents"), "id") = _(_(req, "contents"), "id");
+  _(_(memSysReq, "contents"), "mask") = _(_(req, "contents"), "mask");
   #ifdef LLSC
   _(_(memSysReq, "contents"), "llsc") = _(_(req, "contents"), "llsc");
   #endif
@@ -1271,7 +1272,7 @@ void SimpleMemSSTRam(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
 void SimpleMemRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
                   const char* hex_file)
 {
-  word_t addr(_(_(req, "contents"), "addr"));
+  word_t addr(Cat(_(_(req, "contents"), "addr"), Lit<CLOG2(N/8)>(0)));
   bvec<IROM_SZ> rom_addr(addr[range<CLOG2(N/8),CLOG2(N/8)+IROM_SZ-1>()]);
 
   node valid = _(req, "valid") &&
@@ -1298,7 +1299,7 @@ void SimpleMemRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
 void SimpleMemInfoRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
                       unsigned core_id)
 {
-  word_t addr(_(_(req, "contents"), "addr"));
+  word_t addr(Cat(_(_(req, "contents"), "addr"), Lit<CLOG2(N/8)>(0)));
   bvec<4> rom_addr(addr[range<CLOG2(N/8),CLOG2(N/8)+3>()]);
 
   node valid = _(req, "valid") &&
@@ -1324,7 +1325,7 @@ void SimpleMemInfoRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
 
 void SimpleMemCounters(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req)
 {
-  word_t addr(_(_(req, "contents"), "addr"));
+  word_t addr(Cat(_(_(req, "contents"), "addr"), Lit<CLOG2(N/8)>(0)));
   bvec<4> ctr_addr(addr[range<CLOG2(N/8),CLOG2(N/8)+3>()]);
 
   node valid = _(req, "valid") &&
@@ -1457,14 +1458,27 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   simpleMemReq_t sst_req;
   simpleMemResp_t sst_resp;
 
+  bvec<DATA_SZ/8> byte_mask(
+    Lit<DATA_SZ/8>(1) << _(in, "addr")[range<0, CLOG2(DATA_SZ/8)-1>()]
+  );
+
   _(sst_req, "valid") = (_(in, "mem_rd") || _(in, "mem_wr")) && !_(in, "stall");
   node sst_not_ready(
     (_(in, "mem_rd") || _(in, "mem_wr")) && !_(sst_req, "ready")
   );
   _(_(sst_req, "contents"), "wr") = _(in, "mem_wr");
-  _(_(sst_req, "contents"), "addr") = Zext<ADDR_SZ>(_(in, "addr"));
-  Flatten(_(_(sst_req, "contents"), "data")) = Zext<DATA_SZ>(_(in, "result"));
-  _(_(sst_req, "contents"), "mask") = ~Lit<N/8>(0);
+  _(_(sst_req, "contents"), "addr") =
+    Zext<ADDR_SZ - CLOG2(DATA_SZ/8)>(
+      _(in, "addr")[range<CLOG2(DATA_SZ/8), ADDR_SZ-1>()]
+    );
+
+  for (unsigned i = 0; i < DATA_SZ/8; ++i)
+    for (unsigned j = 0; j < 8; ++j)
+      _(_(sst_req, "contents"), "data")[i][j] =
+        Mux(_(in, "mem_byte"), _(in, "result")[i*8 + j], _(in, "result")[j]);
+
+  _(_(sst_req, "contents"), "mask") =
+    Mux(_(in, "mem_byte"), ~Lit<N/8>(0), byte_mask);
   #ifdef LLSC
   _(_(sst_req, "contents"), "llsc") = _(in, "llsc");
   #else
@@ -1531,7 +1545,8 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
     #ifdef SST_MEM
     IF(Reg(mem_resp_valid)).
       IF(_(mshr_out, "byte"),
-        Zext<N>(Reg(_(_(sst_resp, "contents"), "data")[0]))).
+        Zext<N>(Mux(_(mshr_out, "bytesel"),
+                    Reg(_(_(sst_resp, "contents"), "data"))))).
       #ifdef LLSC
     IF(Reg(_(_(sst_resp, "contents"), "llsc")) && Reg(_(_(sst_resp, "contents"), "wr")), Cat(Lit<N-1>(0), Reg(_(_(sst_resp, "contents"), "llsc_suc")))).
       #endif
