@@ -7,7 +7,7 @@ using namespace std;
 using namespace chdl;
 
 void SimpleMemReqPort(string ident, simpleMemReq_t &req) {
-  out_mem_req<8, DATA_SZ/8, ADDR_SZ, ID_SZ> req_out(req);
+  out_mem_req<8, DATA_SZ/8, ADDR_SZ - CLOG2(DATA_SZ), ID_SZ> req_out(req);
   Expose(string("req_") + ident, req_out);
 }
 
