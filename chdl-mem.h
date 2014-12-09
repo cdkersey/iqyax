@@ -1,5 +1,5 @@
-#ifndef CHDL_SST_H
-#define CHDL_SST_H
+#ifndef CHDL_MEM_H
+#define CHDL_MEM_H
 
 #include <chdl/chdl.h>
 
@@ -19,11 +19,11 @@ void SimpleMemReqPort(std::string ident, simpleMemReq_t &req);
 void SimpleMemRespPort(std::string ident, simpleMemResp_t &resp);
 
 #ifdef SIM_
-void chdl_sst_sim_run(bool &stop_sim,
+void chdl_mem_sim_run(bool &stop_sim,
                       const char *hex_file,
                       chdl::cycle_t cycles);
-void chdl_sst_sim_run(bool &stop_sim, chdl::cycle_t cycles);
-void chdl_sst_sim_run(chdl::cycle_t cycles);
+void chdl_mem_sim_run(bool &stop_sim, chdl::cycle_t cycles);
+void chdl_mem_sim_run(chdl::cycle_t cycles);
 #endif
 
 #endif

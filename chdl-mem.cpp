@@ -1,7 +1,7 @@
 #include <chdl/chdl.h>
 #include <chdl/loader.h>
 
-#include "chdl-sst.h"
+#include "chdl-mem.h"
 
 using namespace std;
 using namespace chdl;

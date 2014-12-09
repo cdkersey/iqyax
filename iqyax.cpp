@@ -26,11 +26,11 @@
 #include "muldiv.h"
 #endif
 
-#ifdef SST_MEM
+#ifdef CHDL_MEM
 #ifdef SIMULATE
 #define SIM_
 #endif
-#include "chdl-sst.h"
+#include "chdl-mem.h"
 #ifdef SIMULATE
 #undef SIM_
 #endif
@@ -96,8 +96,8 @@ int main(int argc, char** argv) {
   critpath_report(cpr);
 
   #ifdef SIMULATE
-  #ifdef SST_MEM
-  chdl_sst_sim_run(stop_sim, (argc >= 2 ? argv[1] : "iqyax.hex"), TMAX);
+  #ifdef CHDL_MEM
+  chdl_mem_sim_run(stop_sim, (argc >= 2 ? argv[1] : "iqyax.hex"), TMAX);
   #else
   ofstream vcd("iqyax.vcd");
   #ifdef TRANS
@@ -156,7 +156,7 @@ word_t InstMem(node &bubble, word_t addr, node fetch, const char* hex_file) {
   q = Wreg(fetch, LLRom<IROM_SZ, N>(rom_addr, hex_file));
   #endif
 
-  #ifdef SST_IMEM
+  #ifdef CHDL_IMEM
   simpleMemReq_t iMemReq;
   simpleMemResp_t iMemResp;  
 
@@ -1219,8 +1219,8 @@ vec<N/8, bvec<8> > InternalMem(word_t a_in, vec<N/8, bvec<8> > d, bvec<N/8> wr,
   return q;
 }
 
-#ifdef SST_MEM
-void SimpleMemSSTRam(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
+#ifdef CHDL_MEM
+void SimpleMemRam(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
   simpleMemReq_t memSysReq;
   simpleMemResp_t memSysResp;
 
@@ -1357,8 +1357,8 @@ void SimpleMem(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
 
   _(req, "ready") = Lit(1);
 
-  #ifdef SST_MEM
-  SimpleMemSSTRam(stallVec[0], respVec[0], req);
+  #ifdef CHDL_MEM
+  SimpleMemRam(stallVec[0], respVec[0], req);
   #endif
 
   #ifdef MAP_ROM_COPY
@@ -1454,52 +1454,52 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   TAP(mshr_in); TAP(mshr_out); TAP(mshr_tag); TAP(mshr_occupied);
   TAP(mshr_full); TAP(mem_resp_valid);
 
-  #ifdef SST_MEM
-  simpleMemReq_t sst_req;
-  simpleMemResp_t sst_resp;
+  #ifdef CHDL_MEM
+  simpleMemReq_t chdl_req;
+  simpleMemResp_t chdl_resp;
 
   bvec<DATA_SZ/8> byte_mask(
     Lit<DATA_SZ/8>(1) << _(in, "addr")[range<0, CLOG2(DATA_SZ/8)-1>()]
   );
 
-  _(sst_req, "valid") = (_(in, "mem_rd") || _(in, "mem_wr")) && !_(in, "stall");
-  node sst_not_ready(
-    (_(in, "mem_rd") || _(in, "mem_wr")) && !_(sst_req, "ready")
+  _(chdl_req, "valid") = (_(in, "mem_rd") || _(in, "mem_wr"))&&!_(in, "stall");
+  node mem_not_ready(
+    (_(in, "mem_rd") || _(in, "mem_wr")) && !_(chdl_req, "ready")
   );
-  _(_(sst_req, "contents"), "wr") = _(in, "mem_wr");
-  _(_(sst_req, "contents"), "addr") =
+  _(_(chdl_req, "contents"), "wr") = _(in, "mem_wr");
+  _(_(chdl_req, "contents"), "addr") =
     Zext<ADDR_SZ - CLOG2(DATA_SZ/8)>(
       _(in, "addr")[range<CLOG2(DATA_SZ/8), ADDR_SZ-1>()]
     );
 
   for (unsigned i = 0; i < DATA_SZ/8; ++i)
     for (unsigned j = 0; j < 8; ++j)
-      _(_(sst_req, "contents"), "data")[i][j] =
+      _(_(chdl_req, "contents"), "data")[i][j] =
         Mux(_(in, "mem_byte"), _(in, "result")[i*8 + j], _(in, "result")[j]);
 
-  _(_(sst_req, "contents"), "mask") =
+  _(_(chdl_req, "contents"), "mask") =
     Mux(_(in, "mem_byte"), ~Lit<N/8>(0), byte_mask);
   #ifdef LLSC
-  _(_(sst_req, "contents"), "llsc") = _(in, "llsc");
+  _(_(chdl_req, "contents"), "llsc") = _(in, "llsc");
   #else
-  _(_(sst_req, "contents"), "llsc") = Lit(0);
+  _(_(chdl_req, "contents"), "llsc") = Lit(0);
   #endif
-  _(_(sst_req, "contents"), "id") = Zext<ID_SZ>(mshr_tag); 
+  _(_(chdl_req, "contents"), "id") = Zext<ID_SZ>(mshr_tag); 
 
-  _(sst_resp, "ready") = Lit(1);
-  mem_resp_valid = _(sst_resp, "valid") && (
-    !_(_(sst_resp, "contents"), "wr")
+  _(chdl_resp, "ready") = Lit(1);
+  mem_resp_valid = _(chdl_resp, "valid") && (
+    !_(_(chdl_resp, "contents"), "wr")
     #ifdef LLSC
-    || _(_(sst_resp, "contents"), "llsc")
+    || _(_(chdl_resp, "contents"), "llsc")
     #endif
   );
-  mem_resp_tag = Zext<CLOG2(MSHR_SZ)>(_(_(sst_resp, "contents"), "id"));
+  mem_resp_tag = Zext<CLOG2(MSHR_SZ)>(_(_(chdl_resp, "contents"), "id"));
 
   node mem_stall;
-  SimpleMem(mem_stall, sst_resp, sst_req, hex_file, core_id);
+  SimpleMem(mem_stall, chdl_resp, chdl_req, hex_file, core_id);
 
-  TAP(sst_req);
-  TAP(sst_resp);
+  TAP(chdl_req);
+  TAP(chdl_resp);
 
   #endif
 
@@ -1513,7 +1513,7 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   #ifdef INTERNAL_MEM
     Reg(_(in, "mem_rd"));
   #endif
-  #ifdef SST_MEM
+  #ifdef CHDL_MEM
     Reg(mem_resp_valid);
   #endif
 
@@ -1522,14 +1522,14 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   #ifdef INTERNAL_MEM
     Reg(_(in, "rdest_idx"));
   #endif
-  #ifdef SST_MEM
+  #ifdef CHDL_MEM
     Mux(Reg(mem_resp_valid), Reg(_(in, "rdest_idx")), _(mshr_out, "rdest"));
   #endif
   _(out, "rdest_valid") = 
   #ifdef INTERNAL_MEM
     Reg(_(in, "rdest_valid"));
   #endif
-  #ifdef SST_MEM
+  #ifdef CHDL_MEM
     Wreg(!_(in, "stall"), _(in, "rdest_valid") && !_(in, "mem_rd")) ||
       Reg(mem_resp_valid);
   #endif
@@ -1542,15 +1542,15 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
       ELSE(memq_word).
     END().
     #endif
-    #ifdef SST_MEM
+    #ifdef CHDL_MEM
     IF(Reg(mem_resp_valid)).
       IF(_(mshr_out, "byte"),
         Zext<N>(Mux(_(mshr_out, "bytesel"),
-                    Reg(_(_(sst_resp, "contents"), "data"))))).
+                    Reg(_(_(chdl_resp, "contents"), "data"))))).
       #ifdef LLSC
-    IF(Reg(_(_(sst_resp, "contents"), "llsc")) && Reg(_(_(sst_resp, "contents"), "wr")), Cat(Lit<N-1>(0), Reg(_(_(sst_resp, "contents"), "llsc_suc")))).
+    IF(Reg(_(_(chdl_resp, "contents"), "llsc")) && Reg(_(_(chdl_resp, "contents"), "wr")), Cat(Lit<N-1>(0), Reg(_(_(chdl_resp, "contents"), "llsc_suc")))).
       #endif
-      ELSE(Zext<N>(Reg(Flatten(_(_(sst_resp, "contents"), "data"))))).
+      ELSE(Zext<N>(Reg(Flatten(_(_(chdl_resp, "contents"), "data"))))).
     END().
     #endif
     #ifdef STALL_SIGNAL
@@ -1640,17 +1640,17 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
     }, _(mshr_in, "valid") || mem_resp_valid);
     #endif
 
-    #ifdef SST_MEM
-    static bool sst_resp_wr_val;
-    static unsigned sst_resp_data_val, sst_resp_tag_val;
-    Egress(sst_resp_wr_val, _(_(sst_resp, "contents"), "wr"));
-    EgressInt(sst_resp_data_val, Flatten(_(_(sst_resp, "contents"), "data")));
-    EgressInt(sst_resp_tag_val, _(_(sst_resp, "contents"), "id"));
-    // Debugging stuff for SST memory
+    #ifdef CHDL_MEM
+    static bool chdl_resp_wr_val;
+    static unsigned chdl_resp_data_val, chdl_resp_tag_val;
+    Egress(chdl_resp_wr_val, _(_(chdl_resp, "contents"), "wr"));
+    EgressInt(chdl_resp_data_val, Flatten(_(_(chdl_resp, "contents"), "data")));
+    EgressInt(chdl_resp_tag_val, _(_(chdl_resp, "contents"), "id"));
+    // Debugging stuff for CHDL memory
     EgressFunc([](bool x) {
-      if (x) cout << "MSHR SST memory response, " << sst_resp_wr_val << ", "
-                  << sst_resp_tag_val << ", " << sst_resp_data_val << endl;
-    }, _(sst_resp, "valid"));
+      if (x) cout << "MSHR CHDL memory response, " << chdl_resp_wr_val << ", "
+                  << chdl_resp_tag_val << ", " << chdl_resp_data_val << endl;
+    }, _(chdl_resp, "valid"));
     #endif
 
     EgressFunc([](bool x) {
@@ -1663,8 +1663,8 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
     #ifdef MSHR
     mshr_full ||
     #endif
-    #ifdef SST_MEM
-    sst_not_ready || _(in, "rdest_valid") && mem_resp_valid || mem_stall ||
+    #ifdef CHDL_MEM
+    mem_not_ready || _(in, "rdest_valid") && mem_resp_valid || mem_stall ||
     #endif
     Lit(0);
   #endif

@@ -23,8 +23,8 @@
 // #define RANDOM_STALL
 // #define INST_ROM_SIMULATE_ICACHE_MISS
 
-#define SST_MEM
-// #define LLSC
+#define CHDL_MEM
+// #define_LLSC
 // #define INTERNAL_MEM
 // #define INFO_ROM
 // #define CORE_ID_INPUT
@@ -32,7 +32,7 @@
 
 // #define MAP_ROM_COPY
 // #define INST_ROM
-#define SST_IMEM
+#define CHDL_IMEM
 
 #define TRISTATE_ALU_MUX
 
@@ -50,7 +50,7 @@
 #define STALL_SIGNAL
 #endif
 
-#ifdef SST_MEM
+#ifdef CHDL_MEM
 #define MSHR
 #endif
 
