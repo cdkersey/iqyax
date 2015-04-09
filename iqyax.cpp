@@ -1247,7 +1247,8 @@ void SimpleMemSSTRam(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
   SimpleMemRespPort("d", memSysResp);
 
   // Responses to (non SC) writes can be silently dropped.
-  _(memSysResp, "ready") = _(resp, "ready");
+  _(memSysResp, "ready") = _(resp, "ready") ||
+     _(_(memSysResp, "contents"), "wr");
   _(resp, "valid") = _(memSysResp,"valid") && (
     !_(_(memSysResp,"contents"),"wr")
     #ifdef LLSC
