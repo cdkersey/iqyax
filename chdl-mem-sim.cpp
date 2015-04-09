@@ -2,7 +2,7 @@
 #include <string>
 #include <cstdlib>
 
-#include "chdl-sst.h"
+#include "chdl-mem.h"
 
 #include <chdl/ingress.h>
 #include <chdl/egress.h>
@@ -151,11 +151,11 @@ void SimpleMemRespPort(string ident, simpleMemResp_t &resp) {
 extern unsigned aval, pcval, irval, seqval, mdrval;
 extern bool rvval, rwval;
 
-#ifdef OLD_SST
+#ifdef OLD_CHDL
 static cdomain_handle_t default_evaluator(cdomain_handle_t cd) { return cd; }
 #endif
 
-void chdl_sst_sim_run(bool &stop, const char* hex_file, cycle_t c) {
+void chdl_mem_sim_run(bool &stop, const char* hex_file, cycle_t c) {
   if (hex_file) {
     unsigned long addr(0x400000);
     ifstream in(hex_file);
@@ -224,5 +224,5 @@ void chdl_sst_sim_run(bool &stop, const char* hex_file, cycle_t c) {
   call_final_funcs();
 }
 
-void chdl_sst_sim_run(bool &s, cycle_t c) { chdl_sst_sim_run(s, NULL, c); }
-void chdl_sst_sim_run(cycle_t c) { bool x(false); chdl_sst_sim_run(x, c); }
+void chdl_mem_sim_run(bool &s, cycle_t c) { chdl_mem_sim_run(s, NULL, c); }
+void chdl_mem_sim_run(cycle_t c) { bool x(false); chdl_mem_sim_run(x, c); }
