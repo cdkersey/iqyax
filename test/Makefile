@@ -5,7 +5,7 @@ MIPS_CFLAGS = -EL -nostdlib -O2 -std=c99 -fno-builtin -mno-branch-likely -mips1\
               -Wa,-mips2
 MIPS_LDFLAGS =
 
-CFLAGS = -std=c99 -g
+CFLAGS = -std=c99 -g -Wall
 
 BIN = triesort.bin sieve-byte.bin mandelbrot.bin struct.bin partest.bin \
       vecsum.bin montepi.bin

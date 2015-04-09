@@ -63,7 +63,7 @@ int main(int argc, char **argv) {
   #else
   /* Read entry point */
   if (argc == 6) {
-    if (!sscanf(argv[4], "%i", &entry_point)) {
+    if (!sscanf(argv[4], "%li", &entry_point)) {
       fprintf(stderr, "Could not convert entry point \"%s\".\n", argv[3]);
       return 1;
     }
