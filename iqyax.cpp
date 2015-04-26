@@ -140,7 +140,9 @@ template <unsigned M, unsigned N> bvec<M> Fold(bvec<N> in) {
 }
 #endif
 
-word_t InstMem(node &bubble, word_t addr, node fetch, const char* hex_file) {
+word_t InstMem(node &bubble, word_t addr, node fetch, node stall,
+               const char* hex_file)
+{
   HIERARCHY_ENTER();
   word_t q;
 
@@ -177,7 +179,7 @@ word_t InstMem(node &bubble, word_t addr, node fetch, const char* hex_file) {
   TAP(pending);
   TAP(next_pending);
 
-  _(iMemResp, "ready") = Lit(1);
+  _(iMemResp, "ready") = !stall;
   bubble = !(_(iMemResp, "valid") || pending || Reg(Lit(0), 1));
   q = Flatten(_(_(iMemResp, "contents"), "data"));
 
@@ -321,7 +323,8 @@ void Fetch(fetch_decode_t &out_buf, exec_fetch_t &in,
   _(out_buf, "bp_pc") = _(btb_out, "next_pc");
   #endif
 
-  _(out_buf, "inst") = InstMem(imem_bubble, pc, fetch_enable, hex_file);
+  _(out_buf, "inst") =
+    InstMem(imem_bubble, pc, fetch_enable, !_(out_buf, "stall"), hex_file);
 
   TAP(imem_bubble);
   TAP(fetch_enable);
@@ -1221,7 +1224,7 @@ vec<N/8, bvec<8> > InternalMem(word_t a_in, vec<N/8, bvec<8> > d, bvec<N/8> wr,
 
 #ifdef CHDL_MEM
 void SimpleMemRam(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
-  simpleMemReq_t memSysReq;
+  simpleMemReq_t memSysReq, queuedReq;
   simpleMemResp_t memSysResp;
 
   word_t addr(Cat(_(_(req, "contents"), "addr"), Lit<CLOG2(N/8)>(0)));
@@ -1243,9 +1246,13 @@ void SimpleMemRam(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
   #endif
   ;
 
-  SimpleMemReqPort("d", memSysReq);
+  Buffer<4>(queuedReq, memSysReq);
+  
+  SimpleMemReqPort("d", queuedReq);
   SimpleMemRespPort("d", memSysResp);
-
+  
+  stall = !_(memSysReq, "ready");
+  
   // Responses to (non SC) writes can be silently dropped.
   _(memSysResp, "ready") = _(resp, "ready");
   _(resp, "valid") = _(memSysResp,"valid") && (
@@ -1458,6 +1465,9 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   simpleMemReq_t chdl_req;
   simpleMemResp_t chdl_resp;
 
+  TAP(chdl_req);
+  TAP(chdl_resp);
+  
   bvec<DATA_SZ/8> byte_mask(
     Lit<DATA_SZ/8>(1) << _(in, "addr")[range<0, CLOG2(DATA_SZ/8)-1>()]
   );

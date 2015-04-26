@@ -1,3 +1,5 @@
+- Variable-size memory request queue
+- Memory queue bypass
 - Support for patented LWL, LWR, SWL, SWR instructions for performing unaligned
   loads and stores. -- it's OK, according to
   (http://www.bpmlegal.com/howtoterm.html) the patent expired before 2010!
