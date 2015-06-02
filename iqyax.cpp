@@ -79,7 +79,7 @@ void Iqyax(const char *hex_file, unsigned initial_pc, bool &stop_sim,
 int main(int argc, char** argv) {
   bool stop_sim(false);
 
-  unsigned initial_pc(0x400000);
+  unsigned initial_pc(0x3ffff8);
   if (argc >= 3) {
     istringstream iss(argv[2]);
     iss >> hex >> initial_pc;
@@ -164,7 +164,8 @@ word_t InstMem(node &bubble, word_t addr, node fetch, node stall,
 
   _(iMemReq, "valid") = fetch;
   _(_(iMemReq, "contents"), "wr") = Lit(0);
-  _(_(iMemReq, "contents"), "addr") = addr[range<CLOG2(N/8),N-1>()];
+  _(_(iMemReq, "contents"), "addr") =
+    Zext<ADDR_SZ - CLOG2(N/8)>(addr[range<CLOG2(N/8),N-1>()]);
   #ifdef LLSC
   _(_(iMemReq, "contents"), "llsc") = Lit(0);
   #endif
@@ -1227,7 +1228,7 @@ void SimpleMemRam(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
   simpleMemReq_t memSysReq, queuedReq;
   simpleMemResp_t memSysResp;
 
-  word_t addr(Cat(_(_(req, "contents"), "addr"), Lit<CLOG2(N/8)>(0)));
+  word_t addr(Zext<N>(Cat(_(_(req, "contents"), "addr"), Lit<CLOG2(N/8)>(0))));
 
   _(_(memSysReq, "contents"), "wr") = _(_(req, "contents"), "wr");
   _(_(memSysReq, "contents"), "addr") = _(_(req, "contents"), "addr");
@@ -1280,7 +1281,7 @@ void SimpleMemRam(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req) {
 void SimpleMemRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
                   const char* hex_file)
 {
-  word_t addr(Cat(_(_(req, "contents"), "addr"), Lit<CLOG2(N/8)>(0)));
+  word_t addr(Zext<N>(Cat(_(_(req, "contents"), "addr"), Lit<CLOG2(N/8)>(0))));
   bvec<IROM_SZ> rom_addr(addr[range<CLOG2(N/8),CLOG2(N/8)+IROM_SZ-1>()]);
 
   node valid = _(req, "valid") &&
@@ -1307,7 +1308,7 @@ void SimpleMemRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
 void SimpleMemInfoRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
                       unsigned core_id)
 {
-  word_t addr(Cat(_(_(req, "contents"), "addr"), Lit<CLOG2(N/8)>(0)));
+  word_t addr(Zext<N>(Cat(_(_(req, "contents"), "addr"), Lit<CLOG2(N/8)>(0))));
   bvec<4> rom_addr(addr[range<CLOG2(N/8),CLOG2(N/8)+3>()]);
 
   node valid = _(req, "valid") &&
@@ -1333,7 +1334,7 @@ void SimpleMemInfoRom(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req,
 
 void SimpleMemCounters(node &stall, simpleMemResp_t &resp, simpleMemReq_t &req)
 {
-  word_t addr(Cat(_(_(req, "contents"), "addr"), Lit<CLOG2(N/8)>(0)));
+  word_t addr(Zext<N>(Cat(_(_(req, "contents"), "addr"), Lit<CLOG2(N/8)>(0))));
   bvec<4> ctr_addr(addr[range<CLOG2(N/8),CLOG2(N/8)+3>()]);
 
   node valid = _(req, "valid") &&
@@ -1480,7 +1481,7 @@ void Mem(mem_reg_t &out, mem_exec_t &fwd, exec_mem_t &in,
   _(_(chdl_req, "contents"), "wr") = _(in, "mem_wr");
   _(_(chdl_req, "contents"), "addr") =
     Zext<ADDR_SZ - CLOG2(DATA_SZ/8)>(
-      _(in, "addr")[range<CLOG2(DATA_SZ/8), ADDR_SZ-1>()]
+      _(in, "addr")[range<CLOG2(DATA_SZ/8), N-1>()]
     );
 
   for (unsigned i = 0; i < DATA_SZ/8; ++i)
@@ -1707,7 +1708,7 @@ word_t InfoRom(bvec<4> a, unsigned core_id) {
   #endif
 
   #ifdef BTB
-  ovec != 0x10;
+  ovec |= 0x10;
   #endif
 
   #ifdef MAP_ROM_COPY
